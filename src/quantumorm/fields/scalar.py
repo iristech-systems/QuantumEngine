@@ -3,7 +3,7 @@ from typing import Any, List, Optional, Pattern, Type, Union
 
 from .base import Field
 
-class StringField(Field):
+class StringField(Field[str]):
     """String field type.
 
     This field type stores string values and provides validation for
@@ -32,7 +32,7 @@ class StringField(Field):
         super().__init__(**kwargs)
         self.py_type = str
 
-    def validate(self, value: Any) -> Optional[str]:
+    def validate(self, value: Any) -> str:
         """Validate the string value.
 
         This method checks if the value is a valid string and meets the
@@ -68,7 +68,7 @@ class StringField(Field):
         return value
 
 
-class NumberField(Field):
+class NumberField(Field[Union[int, float]]):
     """Base class for numeric fields.
 
     This field type is the base class for all numeric field types.
@@ -93,7 +93,7 @@ class NumberField(Field):
         super().__init__(**kwargs)
         self.py_type = Union[int, float]
 
-    def validate(self, value: Any) -> Optional[Union[int, float]]:
+    def validate(self, value: Any) -> Union[int, float]:
         """Validate the numeric value.
 
         This method checks if the value is a valid number and meets the
@@ -140,7 +140,7 @@ class IntField(NumberField):
         super().__init__(**kwargs)
         self.py_type = int
 
-    def validate(self, value: Any) -> Optional[int]:
+    def validate(self, value: Any) -> int:
         """Validate the integer value.
 
         This method checks if the value is a valid integer.
@@ -159,7 +159,7 @@ class IntField(NumberField):
             raise TypeError(f"Expected integer for field '{self.name}', got {type(value)}")
         return value
 
-    def to_db(self, value: Any) -> Optional[int]:
+    def to_db(self, value: Any, backend: Optional[str] = None) -> Optional[int]:
         """Convert Python value to database representation.
 
         This method converts a Python value to an integer for storage in the database.
@@ -191,7 +191,7 @@ class FloatField(NumberField):
         super().__init__(**kwargs)
         self.py_type = float
 
-    def validate(self, value: Any) -> Optional[float]:
+    def validate(self, value: Any) -> float:
         """Validate the float value.
 
         This method checks if the value can be converted to a float.
@@ -214,7 +214,7 @@ class FloatField(NumberField):
         return value
 
 
-class BooleanField(Field):
+class BooleanField(Field[bool]):
     """Boolean field type.
 
     This field type stores boolean values and provides validation
@@ -230,7 +230,7 @@ class BooleanField(Field):
         super().__init__(**kwargs)
         self.py_type = bool
 
-    def validate(self, value: Any) -> Optional[bool]:
+    def validate(self, value: Any) -> bool:
         """Validate the boolean value.
 
         This method checks if the value is a valid boolean.

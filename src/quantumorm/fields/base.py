@@ -2,7 +2,7 @@ import datetime
 import re
 import uuid
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Pattern, Type, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Pattern, Type, TypeVar, Union, cast, Generic
 from surrealdb.data.types.datetime import IsoDateTimeWrapper
 from surrealdb import RecordID
 from ..exceptions import ValidationError
@@ -15,7 +15,7 @@ import json
 # Type variable for field types
 T = TypeVar('T')
 
-class Field:
+class Field(Generic[T]):
     """Base class for all field types.
 
     This class provides the foundation for all field types in the document model.
@@ -60,7 +60,7 @@ class Field:
         self.index_with = index_with
         self.py_type = Any
 
-    def validate(self, value: Any) -> Any:
+    def validate(self, value: Any) -> T:
         """Validate the field value.
 
         This method checks if the value is valid for this field type.
@@ -82,7 +82,7 @@ class Field:
         if value is None and self.required:
             raise ValueError(f"Field '{self.name}' is required")
 
-        result = value
+        result = cast(T, value)
 
         # Trigger post_validate signal
         if SIGNAL_SUPPORT:
@@ -132,7 +132,7 @@ class Field:
         """
         return value
 
-    def from_db(self, value: Any, backend: Optional[str] = None) -> Any:
+    def from_db(self, value: Any, backend: Optional[str] = None) -> T:
         """Convert database value to Python representation.
 
         This method converts a value from the database to a Python value.
@@ -158,7 +158,7 @@ class Field:
 
         return result
     
-    def _from_db_backend_specific(self, value: Any, backend: str) -> Any:
+    def _from_db_backend_specific(self, value: Any, backend: str) -> T:
         """Backend-specific conversion logic.
         
         Subclasses can override this method to provide backend-specific
@@ -171,4 +171,4 @@ class Field:
         Returns:
             The Python representation of the value
         """
-        return value
+        return cast(T, value)

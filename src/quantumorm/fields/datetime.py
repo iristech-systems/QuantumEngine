@@ -5,7 +5,7 @@ from surrealdb.data.types.datetime import IsoDateTimeWrapper
 
 from .base import Field
 
-class DateTimeField(Field):
+class DateTimeField(Field[datetime.datetime]):
     """DateTime field type.
 
     This field type stores datetime values and provides validation and
@@ -34,7 +34,7 @@ class DateTimeField(Field):
         super().__init__(**kwargs)
         self.py_type = datetime.datetime
 
-    def validate(self, value: Any) -> Optional[datetime.datetime]:
+    def validate(self, value: Any) -> datetime.datetime:
         """Validate the datetime value.
 
         This method checks if the value is a valid datetime or can be

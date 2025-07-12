@@ -312,3 +312,6 @@ API_REFERENCE.md
 docs/
 *.rst
 sphinx_build/
+
+# Enhancement suggestions and implementation notes
+enhancements.md

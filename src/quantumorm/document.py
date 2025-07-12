@@ -2,16 +2,20 @@ import json
 import datetime
 import logging
 from dataclasses import dataclass, field as dataclass_field, make_dataclass
-from typing import Any, Dict, List, Optional, Type, Union, ClassVar
+from typing import Any, Dict, List, Optional, Type, Union, ClassVar, TypeVar, Generic
 from .query import QuerySet, RelationQuerySet, QuerySetDescriptor
 from .fields import Field, RecordIDField, ReferenceField, DictField
 from .connection import ConnectionRegistry, SurrealEngineAsyncConnection, SurrealEngineSyncConnection
+from .types import IdType, DatabaseValue
 from surrealdb import RecordID
 from .signals import (
     pre_init, post_init, pre_save, pre_save_post_validation, post_save,
     pre_delete, post_delete, pre_bulk_insert, post_bulk_insert, SIGNAL_SUPPORT
 )
 from .materialized_view import MaterializedView
+
+# Type variable for Document classes
+T = TypeVar('T', bound='Document')
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -231,16 +235,16 @@ class Document(metaclass=DocumentMetaclass):
             super().__setattr__(name, value)
 
     @property
-    def id(self) -> Any:
+    def id(self) -> Optional[IdType]:
         """Get the document ID.
 
         Returns:
-            The document ID
+            The document ID (string, RecordID, or None)
         """
         return self._data.get('id')
 
     @id.setter
-    def id(self, value: Any) -> None:
+    def id(self, value: Optional[IdType]) -> None:
         """Set the document ID.
 
         Args:
@@ -305,7 +309,7 @@ class Document(metaclass=DocumentMetaclass):
             value = self._data.get(field_name)
             field.validate(value)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, DatabaseValue]:
         """Convert the document to a dictionary.
 
         This method converts the document to a dictionary containing all
@@ -352,7 +356,7 @@ class Document(metaclass=DocumentMetaclass):
 
         return result
 
-    def to_db(self) -> Dict[str, Any]:
+    def to_db(self) -> Dict[str, DatabaseValue]:
         """Convert the document to a database-friendly dictionary.
 
         This method converts the document to a dictionary suitable for
@@ -590,7 +594,7 @@ class Document(metaclass=DocumentMetaclass):
         return self
 
     @classmethod
-    async def get(cls, id: Any, dereference: bool = False, dereference_depth: int = 1, **kwargs: Any) -> 'Document':
+    async def get(cls: Type[T], id: IdType, dereference: bool = False, dereference_depth: int = 1, **kwargs: Any) -> T:
         """Get a document by ID with optional dereferencing using FETCH.
 
         This method retrieves a document by ID and optionally resolves references
@@ -669,7 +673,7 @@ class Document(metaclass=DocumentMetaclass):
         return document
 
     @classmethod
-    def get_sync(cls, id: Any, dereference: bool = False, dereference_depth: int = 1, **kwargs: Any) -> 'Document':
+    def get_sync(cls: Type[T], id: IdType, dereference: bool = False, dereference_depth: int = 1, **kwargs: Any) -> T:
         """Get a document by ID with optional dereferencing synchronously using FETCH.
 
         This method retrieves a document by ID and optionally resolves references
@@ -747,7 +751,7 @@ class Document(metaclass=DocumentMetaclass):
             document.resolve_references_sync(depth=dereference_depth)
         return document
 
-    async def save(self, connection: Optional[Any] = None) -> 'Document':
+    async def save(self: T, connection: Optional[Any] = None) -> T:
         """Save the document to the database asynchronously.
 
         This method saves the document to the database, either creating
@@ -824,7 +828,7 @@ class Document(metaclass=DocumentMetaclass):
 
         return self
 
-    def save_sync(self, connection: Optional[Any] = None) -> 'Document':
+    def save_sync(self: T, connection: Optional[Any] = None) -> T:
         """Save the document to the database synchronously.
 
         This method saves the document to the database, either creating

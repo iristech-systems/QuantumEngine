@@ -1,8 +1,18 @@
 import json
-from typing import Any, Dict, List, Optional, Tuple, Union, Type, cast
+import asyncio
+import logging
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union, Type, cast, TypeVar, Generic
 from .exceptions import MultipleObjectsReturned, DoesNotExist
+from .types import IdType, DatabaseValue, QueryCondition, QueryConditions
 from surrealdb import RecordID
 from .pagination import PaginationResult
+
+# Type variable for generic QuerySet
+T = TypeVar('T')  # For generic document types
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Import these at runtime to avoid circular imports
 def _get_connection_classes():
@@ -35,7 +45,7 @@ class BaseQuerySet:
             connection: The database connection to use for queries
         """
         self.connection = connection
-        self.query_parts: List[Tuple[str, str, Any]] = []
+        self.query_parts: QueryConditions = []
         self.limit_value: Optional[int] = None
         self.start_value: Optional[int] = None
         self.order_by_value: Optional[Tuple[str, str]] = None
@@ -44,9 +54,14 @@ class BaseQuerySet:
         self.fetch_fields: List[str] = []
         self.with_index: Optional[str] = None
         # Performance optimization attributes
-        self._bulk_id_selection: Optional[List[Any]] = None
-        self._id_range_selection: Optional[Tuple[Any, Any, bool]] = None
+        self._bulk_id_selection: Optional[List[IdType]] = None
+        self._id_range_selection: Optional[Tuple[IdType, IdType, bool]] = None
         self._prefer_direct_access: bool = False
+        # Retry configuration
+        self._retry_attempts: int = 3
+        self._retry_delay: float = 1.0
+        self._retry_backoff_multiplier: float = 2.0
+        self._retry_max_delay: float = 30.0
 
     def is_async_connection(self) -> bool:
         """Check if the connection is asynchronous.
@@ -281,7 +296,7 @@ class BaseQuerySet:
         self.fetch_fields.extend(fields)
         return self
 
-    def get_many(self, ids: List[Union[str, Any]]) -> 'BaseQuerySet':
+    def get_many(self, ids: List[IdType]) -> 'BaseQuerySet':
         """Get multiple records by IDs using optimized direct record access.
         
         This method uses SurrealDB's direct record selection syntax for better
@@ -302,7 +317,7 @@ class BaseQuerySet:
         clone._bulk_id_selection = ids
         return clone
     
-    def get_range(self, start_id: Union[str, Any], end_id: Union[str, Any], 
+    def get_range(self, start_id: IdType, end_id: IdType, 
                   inclusive: bool = True) -> 'BaseQuerySet':
         """Get a range of records by ID using optimized range syntax.
         
@@ -459,7 +474,7 @@ class BaseQuerySet:
         # If no field definition or conversion failed, return original value
         return value
 
-    def _format_record_id(self, id_value: Any) -> str:
+    def _format_record_id(self, id_value: IdType) -> str:
         """Format an ID value into a proper SurrealDB record ID.
         
         Args:
@@ -595,6 +610,197 @@ class BaseQuerySet:
         if document_class and hasattr(document_class, '_get_collection_name'):
             return document_class._get_collection_name()
         return getattr(self, 'table_name', None)
+
+    def configure_retry(self, attempts: int = 3, delay: float = 1.0, 
+                       backoff_multiplier: float = 2.0, max_delay: float = 30.0) -> 'BaseQuerySet':
+        """Configure retry parameters for this queryset.
+        
+        Args:
+            attempts: Maximum number of retry attempts (default: 3)
+            delay: Initial delay between retries in seconds (default: 1.0)
+            backoff_multiplier: Multiplier for exponential backoff (default: 2.0)
+            max_delay: Maximum delay between retries in seconds (default: 30.0)
+            
+        Returns:
+            The queryset instance for method chaining
+            
+        Example:
+            # Retry up to 5 times with exponential backoff
+            users = await User.objects.configure_retry(attempts=5, delay=0.5).all()
+        """
+        self._retry_attempts = max(1, attempts)
+        self._retry_delay = max(0.1, delay)
+        self._retry_backoff_multiplier = max(1.0, backoff_multiplier)
+        self._retry_max_delay = max(delay, max_delay)
+        return self
+
+    def _is_transient_error(self, error: Exception) -> bool:
+        """Check if an error is transient and worth retrying.
+        
+        Args:
+            error: The exception to check
+            
+        Returns:
+            True if the error appears to be transient
+        """
+        error_msg = str(error).lower()
+        error_type = type(error).__name__.lower()
+        
+        # Common transient error indicators
+        transient_indicators = [
+            'connection', 'timeout', 'unavailable', 'temporary', 
+            'retry', 'deadlock', 'lock', 'busy', 'overloaded',
+            'rate limit', 'throttl', 'too many', 'service unavailable',
+            'network', 'socket', 'broken pipe', 'reset by peer',
+            'read timeout', 'write timeout', 'connect timeout'
+        ]
+        
+        # Common transient exception types
+        transient_types = [
+            'connectionerror', 'timeouterror', 'networkerror',
+            'temporaryerror', 'retryableerror', 'deadlockdetected'
+        ]
+        
+        # Check error message
+        for indicator in transient_indicators:
+            if indicator in error_msg:
+                return True
+                
+        # Check error type
+        for error_type_indicator in transient_types:
+            if error_type_indicator in error_type:
+                return True
+                
+        # SurrealDB specific transient errors
+        if 'surrealdb' in error_msg and any(word in error_msg for word in 
+                                           ['connection', 'network', 'timeout']):
+            return True
+            
+        # ClickHouse specific transient errors
+        if any(indicator in error_msg for indicator in [
+            'clickhouse', 'too many simultaneous queries',
+            'database is readonly', 'memory limit', 'query quota exceeded',
+            'table is read-only', 'node is readonly'
+        ]):
+            return True
+            
+        # Check for specific exception types that are often transient
+        if any(exc_type in error_type for exc_type in [
+            'operationalerror', 'interfaceerror', 'databaseerror'
+        ]):
+            return True
+            
+        return False
+
+    async def _execute_with_retry(self, operation_name: str, operation_func, *args, **kwargs):
+        """Execute an operation with automatic retry on transient failures.
+        
+        Args:
+            operation_name: Name of the operation for logging
+            operation_func: The async function to execute
+            *args: Positional arguments for the operation
+            **kwargs: Keyword arguments for the operation
+            
+        Returns:
+            The result of the operation
+            
+        Raises:
+            The last exception if all retry attempts fail
+        """
+        last_exception = None
+        current_delay = self._retry_delay
+        
+        for attempt in range(self._retry_attempts):
+            try:
+                if attempt > 0:
+                    logger.info(f"Retrying {operation_name} (attempt {attempt + 1}/{self._retry_attempts})")
+                
+                # Execute the operation
+                return await operation_func(*args, **kwargs)
+                
+            except Exception as e:
+                last_exception = e
+                
+                # Check if this is the last attempt
+                if attempt + 1 >= self._retry_attempts:
+                    logger.error(f"All retry attempts failed for {operation_name}. Final error: {e}")
+                    break
+                
+                # Check if error is worth retrying
+                if not self._is_transient_error(e):
+                    logger.warning(f"Non-transient error in {operation_name}, not retrying: {e}")
+                    break
+                
+                # Log the retry
+                logger.warning(f"Transient error in {operation_name} (attempt {attempt + 1}), "
+                             f"retrying in {current_delay:.1f}s: {e}")
+                
+                # Wait before retrying
+                await asyncio.sleep(current_delay)
+                
+                # Calculate next delay with exponential backoff
+                current_delay = min(
+                    current_delay * self._retry_backoff_multiplier,
+                    self._retry_max_delay
+                )
+        
+        # If we get here, all retries failed
+        raise last_exception
+
+    def _execute_with_retry_sync(self, operation_name: str, operation_func, *args, **kwargs):
+        """Execute an operation with automatic retry on transient failures (synchronous version).
+        
+        Args:
+            operation_name: Name of the operation for logging
+            operation_func: The sync function to execute
+            *args: Positional arguments for the operation
+            **kwargs: Keyword arguments for the operation
+            
+        Returns:
+            The result of the operation
+            
+        Raises:
+            The last exception if all retry attempts fail
+        """
+        last_exception = None
+        current_delay = self._retry_delay
+        
+        for attempt in range(self._retry_attempts):
+            try:
+                if attempt > 0:
+                    logger.info(f"Retrying {operation_name} (attempt {attempt + 1}/{self._retry_attempts})")
+                
+                # Execute the operation (synchronous)
+                return operation_func(*args, **kwargs)
+                
+            except Exception as e:
+                last_exception = e
+                
+                # Check if this is the last attempt
+                if attempt + 1 >= self._retry_attempts:
+                    logger.error(f"All retry attempts failed for {operation_name}. Final error: {e}")
+                    break
+                
+                # Check if error is worth retrying
+                if not self._is_transient_error(e):
+                    logger.warning(f"Non-transient error in {operation_name}, not retrying: {e}")
+                    break
+                
+                # Log the retry
+                logger.warning(f"Transient error in {operation_name} (attempt {attempt + 1}), "
+                             f"retrying in {current_delay:.1f}s: {e}")
+                
+                # Wait before retrying (synchronous sleep)
+                time.sleep(current_delay)
+                
+                # Calculate next delay with exponential backoff
+                current_delay = min(
+                    current_delay * self._retry_backoff_multiplier,
+                    self._retry_max_delay
+                )
+        
+        # If we get here, all retries failed
+        raise last_exception
 
     async def all(self) -> List[Any]:
         """Execute the query and return all results asynchronously.
@@ -951,5 +1157,11 @@ class BaseQuerySet:
         clone._bulk_id_selection = self._bulk_id_selection
         clone._id_range_selection = self._id_range_selection
         clone._prefer_direct_access = self._prefer_direct_access
+        
+        # Copy retry configuration
+        clone._retry_attempts = self._retry_attempts
+        clone._retry_delay = self._retry_delay
+        clone._retry_backoff_multiplier = self._retry_backoff_multiplier
+        clone._retry_max_delay = self._retry_max_delay
 
         return clone

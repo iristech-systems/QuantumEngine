@@ -1,29 +1,36 @@
 from ..base_query import BaseQuerySet
-from typing import Any, Dict, List, Optional, Tuple, Type, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, cast, TypeVar, Generic
 from ..exceptions import MultipleObjectsReturned, DoesNotExist
 from ..fields import ReferenceField
+from ..types import IdType, DocumentType
 from surrealdb import RecordID
 import json
 import asyncio
 import logging
 
+# Type variable for QuerySet generic constraint
+T = TypeVar('T', bound='Document')
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-class QuerySet(BaseQuerySet):
-    """Query builder for SurrealDB.
+class QuerySet(BaseQuerySet, Generic[T]):
+    """Query builder for SurrealDB with generic type safety.
 
     This class provides a query builder for document classes with a predefined schema.
     It extends BaseQuerySet to provide methods for querying and manipulating
     documents of a specific document class.
+
+    Type Parameters:
+        T: The document class type that this QuerySet operates on
 
     Attributes:
         document_class: The document class to query
         connection: The database connection to use for queries
     """
 
-    def __init__(self, document_class: Type, connection: Any = None) -> None:
+    def __init__(self, document_class: Type[T], connection: Any = None) -> None:
         """Initialize a new QuerySet.
 
         Args:
@@ -194,11 +201,11 @@ class QuerySet(BaseQuerySet):
 
         return query
 
-    async def all(self, dereference: bool = False) -> List[Any]:
+    async def all(self, dereference: bool = False) -> List[T]:
         """Execute the query and return all results asynchronously.
 
         This method builds and executes the query, then converts the results
-        to instances of the document class.
+        to instances of the document class. Includes automatic retry on transient failures.
 
         Args:
             dereference: Whether to dereference references (default: False)
@@ -206,113 +213,129 @@ class QuerySet(BaseQuerySet):
         Returns:
             List of document instances
         """
-        table_name = self.document_class._get_collection_name()
-        
-        # Handle bulk ID selection optimization
-        if self._bulk_id_selection:
-            # Use direct record access for bulk ID queries if supported
-            if self.backend.supports_direct_record_access() and hasattr(self.backend, 'select_by_ids'):
-                results = await self.backend.select_by_ids(table_name, self._bulk_id_selection)
+        async def _execute_query():
+            table_name = self.document_class._get_collection_name()
+            
+            # Handle bulk ID selection optimization
+            if self._bulk_id_selection:
+                # Use direct record access for bulk ID queries if supported
+                if self.backend.supports_direct_record_access() and hasattr(self.backend, 'select_by_ids'):
+                    results = await self.backend.select_by_ids(table_name, self._bulk_id_selection)
+                else:
+                    # Fallback: convert to IN condition
+                    condition = self.backend.build_condition('id', 'in', self._bulk_id_selection)
+                    results = await self.backend.select(
+                        table_name=table_name,
+                        conditions=[condition],
+                        limit=self.limit_value,
+                        offset=self.start_value,
+                        order_by=[self.order_by_value] if self.order_by_value else None
+                    )
             else:
-                # Fallback: convert to IN condition
-                condition = self.backend.build_condition('id', 'in', self._bulk_id_selection)
+                # Build conditions using the backend
+                conditions = []
+                for field, op, value in self.query_parts:
+                    condition = self.backend.build_condition(field, op, value)
+                    conditions.append(condition)
+                
+                # Use backend.select for querying
                 results = await self.backend.select(
                     table_name=table_name,
-                    conditions=[condition],
+                    conditions=conditions,
                     limit=self.limit_value,
                     offset=self.start_value,
                     order_by=[self.order_by_value] if self.order_by_value else None
                 )
-        else:
+
+            if not results:
+                return []
+
+            # Create one instance per result document
+            processed_results = [self.document_class.from_db(doc, dereference=dereference) for doc in results]
+            return processed_results
+
+        # Execute with retry mechanism
+        return await self._execute_with_retry("query_all", _execute_query)
+
+    def all_sync(self, dereference: bool = False) -> List[T]:
+        """Execute the query and return all results synchronously.
+
+        This method builds and executes the query, then converts the results
+        to instances of the document class. Includes automatic retry on transient failures.
+
+        Args:
+            dereference: Whether to dereference references (default: False)
+
+        Returns:
+            List of document instances
+        """
+        def _execute_query():
+            # For sync operations, we need to handle the backend differently
+            # since most backend methods are async. For now, fall back to direct query
+            query = self._build_query()
+            results = self.connection.client.query(query)
+
+            if not results or not results[0]:
+                return []
+
+            # Create one instance per result document
+            processed_results = [self.document_class.from_db(doc, dereference=dereference) for doc in results]
+            return processed_results
+
+        # Execute with retry mechanism
+        return self._execute_with_retry_sync("query_all_sync", _execute_query)
+
+    async def count(self) -> int:
+        """Count documents matching the query asynchronously.
+
+        This method builds and executes a count query to count the number
+        of documents matching the query. Includes automatic retry on transient failures.
+
+        Returns:
+            Number of matching documents
+        """
+        async def _execute_count():
+            table_name = self.document_class._get_collection_name()
+            
             # Build conditions using the backend
             conditions = []
             for field, op, value in self.query_parts:
                 condition = self.backend.build_condition(field, op, value)
                 conditions.append(condition)
             
-            # Use backend.select for querying
-            results = await self.backend.select(
-                table_name=table_name,
-                conditions=conditions,
-                limit=self.limit_value,
-                offset=self.start_value,
-                order_by=[self.order_by_value] if self.order_by_value else None
-            )
+            # Use backend.count for counting
+            return await self.backend.count(table_name, conditions)
 
-        if not results:
-            return []
-
-        # Create one instance per result document
-        processed_results = [self.document_class.from_db(doc, dereference=dereference) for doc in results]
-        return processed_results
-
-    def all_sync(self, dereference: bool = False) -> List[Any]:
-        """Execute the query and return all results synchronously.
-
-        This method builds and executes the query, then converts the results
-        to instances of the document class.
-
-        Args:
-            dereference: Whether to dereference references (default: False)
-
-        Returns:
-            List of document instances
-        """
-        # For sync operations, we need to handle the backend differently
-        # since most backend methods are async. For now, fall back to direct query
-        query = self._build_query()
-        results = self.connection.client.query(query)
-
-        if not results or not results[0]:
-            return []
-
-        # Create one instance per result document
-        processed_results = [self.document_class.from_db(doc, dereference=dereference) for doc in results]
-        return processed_results
-
-    async def count(self) -> int:
-        """Count documents matching the query asynchronously.
-
-        This method builds and executes a count query to count the number
-        of documents matching the query.
-
-        Returns:
-            Number of matching documents
-        """
-        table_name = self.document_class._get_collection_name()
-        
-        # Build conditions using the backend
-        conditions = []
-        for field, op, value in self.query_parts:
-            condition = self.backend.build_condition(field, op, value)
-            conditions.append(condition)
-        
-        # Use backend.count for counting
-        return await self.backend.count(table_name, conditions)
+        # Execute with retry mechanism
+        return await self._execute_with_retry("query_count", _execute_count)
 
     def count_sync(self) -> int:
         """Count documents matching the query synchronously.
 
         This method builds and executes a count query to count the number
-        of documents matching the query.
+        of documents matching the query. Includes automatic retry on transient failures.
 
         Returns:
             Number of matching documents
         """
-        count_query = f"SELECT count() FROM {self.document_class._get_collection_name()}"
+        def _execute_count():
+            count_query = f"SELECT count() FROM {self.document_class._get_collection_name()}"
 
-        if self.query_parts:
-            conditions = self._build_conditions()
-            count_query += f" WHERE {' AND '.join(conditions)}"
+            if self.query_parts:
+                conditions = self._build_conditions()
+                count_query += f" WHERE {' AND '.join(conditions)}"
 
-        result = self.connection.client.query(count_query)
+            result = self.connection.client.query(count_query)
 
-        if not result or not result[0]:
-            return 0
+            if not result or not result[0]:
+                return 0
 
-        return len(result)
+            return len(result)
 
-    async def get(self, dereference: bool = False, **kwargs: Any) -> Any:
+        # Execute with retry mechanism
+        return self._execute_with_retry_sync("query_count_sync", _execute_count)
+
+    async def get(self, dereference: bool = False, **kwargs: Any) -> T:
         """Get a single document matching the query asynchronously.
 
         This method applies filters and ensures that exactly one document is returned.
@@ -339,7 +362,7 @@ class QuerySet(BaseQuerySet):
 
         return results[0]
 
-    def get_sync(self, dereference: bool = False, **kwargs: Any) -> Any:
+    def get_sync(self, dereference: bool = False, **kwargs: Any) -> T:
         """Get a single document matching the query synchronously.
 
         This method applies filters and ensures that exactly one document is returned.
@@ -366,10 +389,11 @@ class QuerySet(BaseQuerySet):
 
         return results[0]
 
-    async def create(self, **kwargs: Any) -> Any:
+    async def create(self, **kwargs: Any) -> T:
         """Create a new document asynchronously.
 
         This method creates a new document with the given field values.
+        Includes automatic retry on transient failures.
 
         Args:
             **kwargs: Field names and values for the new document
@@ -377,23 +401,28 @@ class QuerySet(BaseQuerySet):
         Returns:
             The created document
         """
-        document = self.document_class(**kwargs)
-        document.validate()
-        
-        # Convert to DB format
-        data = document.to_db()
-        
-        # Use backend for insertion
-        table_name = self.document_class._get_collection_name()
-        result = await self.backend.insert(table_name, data)
-        
-        # Return new document instance from result
-        return self.document_class.from_db(result)
+        async def _execute_create():
+            document = self.document_class(**kwargs)
+            document.validate()
+            
+            # Convert to DB format
+            data = document.to_db()
+            
+            # Use backend for insertion
+            table_name = self.document_class._get_collection_name()
+            result = await self.backend.insert(table_name, data)
+            
+            # Return new document instance from result
+            return self.document_class.from_db(result)
 
-    def create_sync(self, **kwargs: Any) -> Any:
+        # Execute with retry mechanism
+        return await self._execute_with_retry("query_create", _execute_create)
+
+    def create_sync(self, **kwargs: Any) -> T:
         """Create a new document synchronously.
 
         This method creates a new document with the given field values.
+        Includes automatic retry on transient failures.
 
         Args:
             **kwargs: Field names and values for the new document
@@ -401,10 +430,14 @@ class QuerySet(BaseQuerySet):
         Returns:
             The created document
         """
-        document = self.document_class(**kwargs)
-        return document.save_sync(self.connection)
+        def _execute_create():
+            document = self.document_class(**kwargs)
+            return document.save_sync(self.connection)
 
-    async def update(self, **kwargs: Any) -> List[Any]:
+        # Execute with retry mechanism
+        return self._execute_with_retry_sync("query_create_sync", _execute_create)
+
+    async def update(self, **kwargs: Any) -> List[T]:
         """Update documents matching the query asynchronously with performance optimizations.
 
         This method updates documents matching the query with the given field values.
@@ -470,7 +503,7 @@ class QuerySet(BaseQuerySet):
         results = await self.backend.update(table_name, conditions, update_data)
         return [self.document_class.from_db(doc) for doc in results]
 
-    def update_sync(self, **kwargs: Any) -> List[Any]:
+    def update_sync(self, **kwargs: Any) -> List[T]:
         """Update documents matching the query synchronously with performance optimizations.
 
         This method updates documents matching the query with the given field values.
@@ -612,8 +645,8 @@ class QuerySet(BaseQuerySet):
 
         return len(result[0])
 
-    async def bulk_create(self, documents: List[Any], batch_size: int = 1000,
-                      validate: bool = True, return_documents: bool = True) -> Union[List[Any], int]:
+    async def bulk_create(self, documents: List[T], batch_size: int = 1000,
+                      validate: bool = True, return_documents: bool = True) -> Union[List[T], int]:
         """Create multiple documents in a single operation asynchronously.
 
         This method creates multiple documents in a single operation, processing
@@ -691,8 +724,8 @@ class QuerySet(BaseQuerySet):
 
         return created_docs if return_documents else total_created
 
-    def bulk_create_sync(self, documents: List[Any], batch_size: int = 1000,
-                      validate: bool = True, return_documents: bool = True) -> Union[List[Any], int]:
+    def bulk_create_sync(self, documents: List[T], batch_size: int = 1000,
+                      validate: bool = True, return_documents: bool = True) -> Union[List[T], int]:
         """Create multiple documents in a single operation synchronously.
 
         This method creates multiple documents in a single operation, processing
