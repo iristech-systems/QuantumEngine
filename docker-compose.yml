@@ -1,0 +1,74 @@
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: quantumorm-clickhouse
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native protocol
+      - "9004:9004"  # MySQL protocol (optional)
+    environment:
+      # Default user settings
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""  # Empty password for local development
+    volumes:
+      # Persist data between restarts
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+      # Custom configuration (optional)
+      - ./docker/clickhouse/config.xml:/etc/clickhouse-server/config.d/custom.xml:ro
+      - ./docker/clickhouse/users.xml:/etc/clickhouse-server/users.d/custom.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Optional: ClickHouse Keeper for replication (if needed later)
+  # clickhouse-keeper:
+  #   image: clickhouse/clickhouse-keeper:latest
+  #   container_name: surrealengine-clickhouse-keeper
+  #   ports:
+  #     - "2181:2181"
+  #     - "9181:9181"
+  #   volumes:
+  #     - clickhouse-keeper:/var/lib/clickhouse-keeper
+
+  # Optional: SurrealDB for multi-backend testing
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    restart: always
+    command: start --log debug --user root --pass root
+    ports:
+      - "8000:8000"
+    volumes:
+      - surrealdb-data:/data
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    environment:
+      # Use in-memory storage for development to avoid permission issues
+      - SURREAL_LOG=info
+
+volumes:
+  clickhouse-data:
+    driver: local
+  clickhouse-logs:
+    driver: local
+  clickhouse-keeper:
+    driver: local
+  surrealdb-data:
+    driver: local
+
+networks:
+  default:
+    name: quantumorm-network

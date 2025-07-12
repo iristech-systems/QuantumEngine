@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <users>
+        <!-- Default user with no password for development -->
+        <default>
+            <password></password>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_management>1</access_management>
+            <databases>
+                <database>default</database>
+            </databases>
+        </default>
+        
+        <!-- Development user with more permissions -->
+        <dev>
+            <password>dev123</password>
+            <networks>
+                <ip>::/0</ip>
+            </networks>
+            <profile>default</profile>
+            <quota>default</quota>
+            <access_management>1</access_management>
+            <databases>
+                <database>default</database>
+                <database>test</database>
+            </databases>
+        </dev>
+    </users>
+    
+    <profiles>
+        <default>
+            <max_memory_usage>10000000000</max_memory_usage>
+            <max_memory_usage_for_user>5000000000</max_memory_usage_for_user>
+            <use_uncompressed_cache>0</use_uncompressed_cache>
+            <load_balancing>random</load_balancing>
+            <allow_experimental_analyzer>1</allow_experimental_analyzer>
+            <allow_experimental_object_type>1</allow_experimental_object_type>
+        </default>
+    </profiles>
+    
+    <quotas>
+        <default>
+            <interval>
+                <duration>3600</duration>
+                <queries>0</queries>
+                <errors>0</errors>
+                <result_rows>0</result_rows>
+                <read_rows>0</read_rows>
+                <execution_time>0</execution_time>
+            </interval>
+        </default>
+    </quotas>
+</clickhouse>

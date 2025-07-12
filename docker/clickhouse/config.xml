@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <!-- Custom configuration for development -->
+    
+    <!-- Enable query logging for debugging -->
+    <logger>
+        <level>information</level>
+        <size>100M</size>
+        <count>10</count>
+        <!-- Log queries for debugging -->
+        <console>1</console>
+    </logger>
+    
+    <!-- Query log settings -->
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_log>
+    
+    <!-- Performance settings for development -->
+    <max_connections>1000</max_connections>
+    <max_concurrent_queries>100</max_concurrent_queries>
+    
+    <!-- Enable JSON output format -->
+    <format_schema_path>/var/lib/clickhouse/format_schemas/</format_schema_path>
+    
+    <!-- Skip check for user-level settings in config -->
+    <skip_check_for_incorrect_settings>1</skip_check_for_incorrect_settings>
+    
+    <!-- Network settings -->
+    <listen_host>0.0.0.0</listen_host>
+    <http_port>8123</http_port>
+    <tcp_port>9000</tcp_port>
+    <mysql_port>9004</mysql_port>
+    
+    <!-- Timezone -->
+    <timezone>UTC</timezone>
+    
+    <!-- Default database -->
+    <default_database>default</default_database>
+</clickhouse>
