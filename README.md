@@ -1,51 +1,6 @@
 <div align="center">
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none" width="400" style="margin-bottom: 20px;">
-    <defs>
-      <linearGradient id="quantumGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:#00F5FF;stop-opacity:1" />
-        <stop offset="50%" style="stop-color:#0080FF;stop-opacity:1" />
-        <stop offset="100%" style="stop-color:#8000FF;stop-opacity:1" />
-      </linearGradient>
-      <linearGradient id="quantumAccent" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%" style="stop-color:#00F5FF;stop-opacity:0.8" />
-        <stop offset="100%" style="stop-color:#8000FF;stop-opacity:0.8" />
-      </linearGradient>
-    </defs>
-    
-    <!-- Logo mark - Quantum particle system -->
-    <g transform="translate(10, 15)">
-      <!-- Central quantum core -->
-      <circle cx="15" cy="15" r="8" fill="none" stroke="url(#quantumGradient)" stroke-width="2"/>
-      <circle cx="15" cy="15" r="4" fill="url(#quantumGradient)" opacity="0.8"/>
-      
-      <!-- Orbiting particles/data -->
-      <circle cx="25" cy="10" r="2" fill="url(#quantumGradient)" opacity="0.9">
-        <animateTransform attributeName="transform" type="rotate" values="0 15 15;360 15 15" dur="4s" repeatCount="indefinite"/>
-      </circle>
-      <circle cx="5" cy="20" r="1.5" fill="url(#quantumGradient)" opacity="0.7">
-        <animateTransform attributeName="transform" type="rotate" values="0 15 15;-360 15 15" dur="6s" repeatCount="indefinite"/>
-      </circle>
-      <circle cx="23" cy="25" r="1" fill="url(#quantumGradient)" opacity="0.6">
-        <animateTransform attributeName="transform" type="rotate" values="0 15 15;360 15 15" dur="8s" repeatCount="indefinite"/>
-      </circle>
-      
-      <!-- Quantum entanglement lines -->
-      <path d="M7 15 Q15 5, 23 15 Q15 25, 7 15" stroke="url(#quantumAccent)" stroke-width="1" fill="none" opacity="0.5"/>
-      
-      <!-- Engine connection -->
-      <rect x="30" y="13" width="6" height="4" rx="2" fill="url(#quantumGradient)" opacity="0.7"/>
-    </g>
-    
-    <!-- Company name -->
-    <text x="55" y="25" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#2D3748">
-      Quantum
-    </text>
-    <text x="55" y="42" font-family="Arial, sans-serif" font-size="18" font-weight="300" fill="url(#quantumGradient)">
-      Engine
-    </text>
-  </svg>
   
-  <h1>QuantumEngine</h1>
+# ⚛️ QuantumEngine ⚡
   
   <p>
     <strong>A powerful, multi-backend Object-Document Mapper (ODM) for Python</strong>
