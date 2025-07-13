@@ -710,10 +710,14 @@ For detailed contribution guidelines, see:
 - **CONTRIBUTING.md**: Development setup, Docker instructions, and contribution workflow
 - **docs/README.md**: Documentation contribution guidelines
 
+## 🙏 Acknowledgments
+
+QuantumEngine draws significant inspiration from [MongoEngine](https://github.com/MongoEngine/mongoengine), whose elegant document-oriented design patterns and query API have influenced our multi-backend approach. We're grateful to the MongoEngine community for pioneering many of the concepts that make QuantumEngine possible.
+
 ## 📄 License
 
 MIT License - see LICENSE file for details.
 
 ---
 
-**QuantumORM**: Unified database access for modern Python applications with comprehensive multi-backend support, schema management, and performance optimizations.
+**QuantumEngine**: Unified database access for modern Python applications with comprehensive multi-backend support, schema management, and performance optimizations.
