@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantumengine"
-version = "0.1.0"
+version = "0.1.1"
 description = "Multi-Backend Object-Document Mapper (ODM) for ClickHouse, SurrealDB, and more - Quantum-Powered Database Engine"
 readme = "README.md"
 requires-python = ">=3.8"
