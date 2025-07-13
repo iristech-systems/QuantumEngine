@@ -33,7 +33,8 @@ class Field(Generic[T]):
 
     def __init__(self, required: bool = False, default: Any = None, db_field: Optional[str] = None,
                  define_schema: bool = False, indexed: bool = False, unique: bool = False, 
-                 search: bool = False, analyzer: Optional[str] = None, index_with: Optional[List[str]] = None) -> None:
+                 search: bool = False, analyzer: Optional[str] = None, index_with: Optional[List[str]] = None,
+                 materialized: Optional[str] = None, indexes: Optional[List[Dict[str, Any]]] = None) -> None:
         """Initialize a new Field.
 
         Args:
@@ -46,6 +47,8 @@ class Field(Generic[T]):
             search: Whether the index is a search index
             analyzer: Analyzer to use for search indexes
             index_with: List of other field names to include in the index
+            materialized: ClickHouse materialized column expression
+            indexes: List of index specifications for advanced indexing
         """
         self.required = required
         self.default = default
@@ -58,6 +61,8 @@ class Field(Generic[T]):
         self.search = search
         self.analyzer = analyzer
         self.index_with = index_with
+        self.materialized = materialized
+        self.indexes = indexes or []
         self.py_type = Any
 
     def validate(self, value: Any) -> T:

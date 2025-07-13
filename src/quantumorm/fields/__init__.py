@@ -21,6 +21,10 @@ from .specialized import (
 from .additional import (
     OptionField, FutureField, TableField, RangeField
 )
+from .clickhouse import (
+    LowCardinalityField, FixedStringField, EnumField,
+    CompressedStringField, CompressedLowCardinalityField
+)
 
 # Export all classes at the top level to maintain the same import interface
 __all__ = [
@@ -34,4 +38,6 @@ __all__ = [
     'BytesField', 'RegexField', 'DecimalField', 'UUIDField', 'LiteralField',
     'EmailField', 'URLField', 'IPAddressField', 'SlugField', 'ChoiceField',
     'OptionField', 'FutureField', 'TableField', 'RangeField',
+    'LowCardinalityField', 'FixedStringField', 'EnumField',
+    'CompressedStringField', 'CompressedLowCardinalityField',
 ]

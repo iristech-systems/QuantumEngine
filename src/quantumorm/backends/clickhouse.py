@@ -25,55 +25,265 @@ class ClickHouseBackend(BaseBackend):
         self.client = connection
     
     async def create_table(self, document_class: Type, **kwargs) -> None:
-        """Create a table for the document class.
+        """Create a table for the document class with advanced ClickHouse features.
         
         Args:
             document_class: The document class to create a table for
-            **kwargs: Backend-specific options:
+            **kwargs: Backend-specific options (override Meta settings):
                 - engine: ClickHouse table engine (default: MergeTree)
-                - order_by: Order by columns (default: id)
+                - engine_params: Parameters for the engine (e.g., ['date_collected'] for ReplacingMergeTree)
+                - order_by: Order by columns (default: ['id'])
                 - partition_by: Partition by expression
                 - primary_key: Primary key columns
                 - settings: Additional table settings
+                - ttl: TTL expression for data lifecycle
         """
         table_name = document_class._meta.get('table_name')
+        meta = document_class._meta
+        
+        # Get engine configuration from Meta or kwargs
+        engine = kwargs.get('engine', meta.get('engine', 'MergeTree'))
+        engine_params = kwargs.get('engine_params', meta.get('engine_params', []))
+        order_by = kwargs.get('order_by', meta.get('order_by'))
+        partition_by = kwargs.get('partition_by', meta.get('partition_by'))
+        primary_key = kwargs.get('primary_key', meta.get('primary_key'))
+        settings = kwargs.get('settings', meta.get('settings', {}))
+        ttl = kwargs.get('ttl', meta.get('ttl'))
+        
+        # ClickHouse-specific ORDER BY intelligence
+        if not order_by:
+            order_by = self._determine_smart_order_by(document_class)
         
         # Build column definitions
         columns = []
+        materialized_columns = []
+        
         for field_name, field in document_class._fields.items():
             field_type = self.get_field_type(field)
-            if field.required:
+            
+            # Check for materialized columns
+            if hasattr(field, 'materialized') and field.materialized:
+                columns.append(f"`{field_name}` {field_type} MATERIALIZED ({field.materialized})")
+                materialized_columns.append(field_name)
+            elif field.required and field_name not in materialized_columns:
                 columns.append(f"`{field_name}` {field_type}")
-            else:
-                columns.append(f"`{field_name}` Nullable({field_type})")
-        
-        # Table engine settings
-        engine = kwargs.get('engine', 'MergeTree')
-        order_by = kwargs.get('order_by', 'id')
-        partition_by = kwargs.get('partition_by')
-        primary_key = kwargs.get('primary_key')
-        settings = kwargs.get('settings', {})
+            elif field_name not in materialized_columns:
+                # Handle special ClickHouse type restrictions
+                if field_type.startswith('LowCardinality('):
+                    # LowCardinality cannot be inside Nullable - it handles nulls natively
+                    columns.append(f"`{field_name}` {field_type}")
+                elif hasattr(field, 'codec') and field.codec:
+                    # Handle codec fields specially - CODEC cannot be inside Nullable()
+                    if ' CODEC(' in field_type:
+                        base_type, codec_part = field_type.split(' CODEC(', 1)
+                        columns.append(f"`{field_name}` Nullable({base_type}) CODEC({codec_part}")
+                    else:
+                        columns.append(f"`{field_name}` Nullable({field_type})")
+                else:
+                    columns.append(f"`{field_name}` Nullable({field_type})")
         
         # Build CREATE TABLE query
         query = f"CREATE TABLE IF NOT EXISTS {table_name} (\n"
         query += ",\n".join(f"    {col}" for col in columns)
-        query += f"\n) ENGINE = {engine}()"
         
+        # Add engine with parameters
+        if engine_params:
+            params_str = ", ".join(f"`{p}`" if isinstance(p, str) else str(p) for p in engine_params)
+            query += f"\n) ENGINE = {engine}({params_str})"
+        else:
+            query += f"\n) ENGINE = {engine}()"
+        
+        # Add partition by
         if partition_by:
-            query += f" PARTITION BY {partition_by}"
+            query += f"\nPARTITION BY {partition_by}"
         
+        # Add primary key
         if primary_key:
-            query += f" PRIMARY KEY {primary_key}"
+            if isinstance(primary_key, list):
+                primary_key = ", ".join(f"`{pk}`" for pk in primary_key)
+            query += f"\nPRIMARY KEY ({primary_key})"
         
-        query += f" ORDER BY {order_by}"
+        # Add order by
+        if isinstance(order_by, list):
+            order_by_str = ", ".join(f"`{col}`" for col in order_by)
+        else:
+            order_by_str = f"`{order_by}`" if not order_by.startswith('`') else order_by
+        query += f"\nORDER BY ({order_by_str})"
+        
+        # Add TTL
+        if ttl:
+            query += f"\nTTL {ttl}"
         
         # Add settings
         if settings:
             settings_str = ", ".join(f"{k}={v}" for k, v in settings.items())
-            query += f" SETTINGS {settings_str}"
+            query += f"\nSETTINGS {settings_str}"
         
-        # Execute in async context
+        # Debug: Print the generated query
+        print("Generated ClickHouse SQL:")
+        print(query)
+        print("=" * 60)
+        
+        # Execute table creation
         await self._execute(query)
+        
+        # Create indexes if specified
+        await self._create_indexes(document_class, table_name)
+    
+    async def _create_indexes(self, document_class: Type, table_name: str) -> None:
+        """Create indexes for the table based on field specifications.
+        
+        Args:
+            document_class: The document class
+            table_name: The table name
+        """
+        for field_name, field in document_class._fields.items():
+            if hasattr(field, 'indexes') and field.indexes:
+                for index_spec in field.indexes:
+                    await self._create_single_index(table_name, field_name, index_spec)
+    
+    async def _create_single_index(self, table_name: str, field_name: str, index_spec: Dict[str, Any]) -> None:
+        """Create a single index based on specification.
+        
+        Args:
+            table_name: The table name
+            field_name: The field name
+            index_spec: Index specification dictionary
+        """
+        index_type = index_spec.get('type', 'bloom_filter')
+        granularity = index_spec.get('granularity', 3)
+        
+        # Generate index name
+        index_name = f"idx_{table_name}_{field_name}_{index_type}"
+        
+        if index_type == 'bloom_filter':
+            false_positive_rate = index_spec.get('false_positive_rate', 0.01)
+            query = (f"ALTER TABLE {table_name} "
+                    f"ADD INDEX {index_name} {field_name} "
+                    f"TYPE bloom_filter({false_positive_rate}) GRANULARITY {granularity}")
+        
+        elif index_type == 'set':
+            max_values = index_spec.get('max_values', 100)
+            query = (f"ALTER TABLE {table_name} "
+                    f"ADD INDEX {index_name} {field_name} "
+                    f"TYPE set({max_values}) GRANULARITY {granularity}")
+        
+        elif index_type == 'minmax':
+            query = (f"ALTER TABLE {table_name} "
+                    f"ADD INDEX {index_name} {field_name} "
+                    f"TYPE minmax GRANULARITY {granularity}")
+        
+        else:
+            # Custom index type - use as-is
+            query = (f"ALTER TABLE {table_name} "
+                    f"ADD INDEX {index_name} {field_name} "
+                    f"TYPE {index_type} GRANULARITY {granularity}")
+        
+        try:
+            await self._execute(query)
+        except Exception as e:
+            # Log index creation failure but don't fail table creation
+            print(f"Warning: Failed to create index {index_name}: {e}")
+    
+    def _determine_smart_order_by(self, document_class: Type) -> List[str]:
+        """Intelligently determine ORDER BY clause for ClickHouse tables.
+        
+        ClickHouse requires an ORDER BY clause, but unlike traditional databases,
+        it doesn't need an artificial 'id' field. This method analyzes the document
+        fields to choose the most appropriate ORDER BY strategy.
+        
+        Priority order:
+        1. Time-based fields (common in analytics workloads)
+        2. Required categorical fields (user_id, product_id, etc.)
+        3. Any required non-nullable fields
+        4. Auto-generate a simple ordering field if needed
+        
+        Args:
+            document_class: The document class to analyze
+            
+        Returns:
+            List of field names for ORDER BY clause
+        """
+        fields = document_class._fields
+        time_fields = []
+        categorical_fields = []
+        required_fields = []
+        
+        # Import field types for analysis
+        from ..fields import DateTimeField, StringField
+        from ..fields.clickhouse import LowCardinalityField
+        
+        for field_name, field in fields.items():
+            # Skip materialized columns from ORDER BY consideration
+            if hasattr(field, 'materialized') and field.materialized:
+                continue
+                
+            # Analyze field patterns
+            field_name_lower = field_name.lower()
+            
+            # Priority 1: Time-based fields
+            if isinstance(field, DateTimeField):
+                priority = 0
+                # Give higher priority to common timestamp field names
+                if any(keyword in field_name_lower for keyword in 
+                       ['created', 'updated', 'collected', 'timestamp', 'time', 'date']):
+                    priority = -1
+                time_fields.append((priority, field_name, field))
+            
+            # Priority 2: Categorical identifier fields
+            elif (isinstance(field, (StringField, LowCardinalityField)) and 
+                  field.required and
+                  any(keyword in field_name_lower for keyword in 
+                      ['id', 'key', 'name', 'code', 'type', 'category', 'brand', 'seller'])):
+                # Lower cardinality fields get higher priority
+                priority = 0 if isinstance(field, LowCardinalityField) else 1
+                categorical_fields.append((priority, field_name, field))
+            
+            # Priority 3: Any required fields that could work for ordering
+            elif field.required:
+                required_fields.append((field_name, field))
+        
+        # Build ORDER BY strategy
+        order_by = []
+        
+        # Add best time field (most common pattern in ClickHouse)
+        if time_fields:
+            time_fields.sort(key=lambda x: x[0])  # Sort by priority
+            best_time_field = time_fields[0][1]
+            order_by.append(best_time_field)
+            
+            # Add best categorical field to improve sorting
+            if categorical_fields and len(order_by) < 3:
+                categorical_fields.sort(key=lambda x: x[0])
+                best_categorical = categorical_fields[0][1]
+                order_by.append(best_categorical)
+        
+        # If no time fields, start with categorical fields
+        elif categorical_fields:
+            categorical_fields.sort(key=lambda x: x[0])
+            # Add up to 2 categorical fields for compound sorting
+            for i, (_, field_name, _) in enumerate(categorical_fields[:2]):
+                order_by.append(field_name)
+        
+        # If no good categorical fields, use any required field
+        elif required_fields:
+            order_by.append(required_fields[0][0])
+        
+        # Last resort: auto-generate a simple ordering field
+        if not order_by:
+            print("Warning: No suitable fields found for ORDER BY. "
+                  "Consider adding a timestamp or identifier field, "
+                  "or specify order_by explicitly in Meta class.")
+            # Create a synthetic ordering using tuple() of available fields
+            available_fields = [name for name, field in fields.items() 
+                              if not (hasattr(field, 'materialized') and field.materialized)]
+            if available_fields:
+                order_by = available_fields[:3]  # Use first few fields
+            else:
+                # Absolute last resort - this shouldn't happen in practice
+                order_by = ['tuple()']
+        
+        return order_by
     
     async def insert(self, table_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Insert a single document.
@@ -85,9 +295,18 @@ class ClickHouseBackend(BaseBackend):
         Returns:
             The inserted document with generated id if not provided
         """
-        # Generate ID if not provided
-        if 'id' not in data or not data['id']:
-            data['id'] = str(uuid.uuid4())
+        # Generate ID only if the table has an id column and it's not provided
+        # First check if the table has an id column by describing it
+        try:
+            describe_result = await self._query(f"DESCRIBE {table_name}")
+            column_names = [row[0] for row in describe_result] if describe_result else []
+            
+            if 'id' in column_names and ('id' not in data or not data['id']):
+                data['id'] = str(uuid.uuid4())
+        except Exception:
+            # If we can't describe the table, fall back to the old behavior
+            if 'id' not in data or not data['id']:
+                data['id'] = str(uuid.uuid4())
         
         columns = list(data.keys())
         values = [data[col] for col in columns]
@@ -109,9 +328,18 @@ class ClickHouseBackend(BaseBackend):
         if not data:
             return []
         
-        # Ensure all documents have IDs
+        # Check if the table has an id column
+        try:
+            describe_result = await self._query(f"DESCRIBE {table_name}")
+            column_names = [row[0] for row in describe_result] if describe_result else []
+            table_has_id = 'id' in column_names
+        except Exception:
+            # If we can't describe the table, assume it has an id column
+            table_has_id = True
+        
+        # Ensure all documents have IDs only if the table has an id column
         for doc in data:
-            if 'id' not in doc or not doc['id']:
+            if table_has_id and ('id' not in doc or not doc['id']):
                 doc['id'] = str(uuid.uuid4())
         
         # Get columns from first document
@@ -362,10 +590,10 @@ class ClickHouseBackend(BaseBackend):
             return f"{field} {operator} {self.format_value(value)}"
     
     def get_field_type(self, field: Any) -> str:
-        """Get the ClickHouse field type for a SurrealEngine field.
+        """Get the ClickHouse field type for a QuantumORM field.
         
         Args:
-            field: A SurrealEngine field instance
+            field: A QuantumORM field instance
             
         Returns:
             The corresponding ClickHouse field type
@@ -373,9 +601,18 @@ class ClickHouseBackend(BaseBackend):
         # Import here to avoid circular imports
         from ..fields import (
             StringField, IntField, FloatField, BooleanField,
-            DateTimeField, UUIDField, DictField
+            DateTimeField, UUIDField, DictField, DecimalField
+        )
+        from ..fields.clickhouse import (
+            LowCardinalityField, FixedStringField, EnumField,
+            CompressedStringField, CompressedLowCardinalityField
         )
         
+        # Check for ClickHouse-specific fields first
+        if hasattr(field, 'get_clickhouse_type'):
+            return field.get_clickhouse_type()
+        
+        # Handle standard fields
         if isinstance(field, StringField):
             if hasattr(field, 'max_length') and field.max_length:
                 return f"FixedString({field.max_length})"
@@ -390,6 +627,8 @@ class ClickHouseBackend(BaseBackend):
             return "DateTime64(3)"  # Millisecond precision
         elif isinstance(field, UUIDField):
             return "UUID"
+        elif isinstance(field, DecimalField):
+            return "Decimal(38, 18)"  # High precision decimal
         elif isinstance(field, DictField):
             return "String"  # Store JSON as string
         else:

@@ -61,6 +61,14 @@ class DocumentMetaclass(type):
             'indexes': getattr(meta, 'indexes', []),
             'id_field': getattr(meta, 'id_field', 'id'),
             'strict': getattr(meta, 'strict', True),
+            # ClickHouse-specific attributes
+            'engine': getattr(meta, 'engine', None),
+            'engine_params': getattr(meta, 'engine_params', None),
+            'partition_by': getattr(meta, 'partition_by', None),
+            'order_by': getattr(meta, 'order_by', None),
+            'primary_key': getattr(meta, 'primary_key', None),
+            'ttl': getattr(meta, 'ttl', None),
+            'settings': getattr(meta, 'settings', None),
         }
 
         # Process fields
