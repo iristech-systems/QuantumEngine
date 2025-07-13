@@ -15,6 +15,10 @@ from decimal import Decimal
 import clickhouse_connect
 
 # Import QuantumORM components
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 try:
     from src.quantumorm.connection import ConnectionRegistry
     from src.quantumorm.backends.clickhouse import ClickHouseBackend

@@ -14,6 +14,10 @@ from decimal import Decimal
 from typing import List
 
 # Import the enhanced QuantumORM components
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 try:
     from src.quantumorm.document import Document
     from src.quantumorm.fields import (

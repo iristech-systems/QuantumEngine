@@ -12,6 +12,10 @@ import datetime
 from typing import TYPE_CHECKING
 
 # Import the enhanced QuantumORM components
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 try:
     from src.quantumorm.fields.scalar import StringField, IntField, FloatField, BooleanField
     from src.quantumorm.fields.datetime import DateTimeField
