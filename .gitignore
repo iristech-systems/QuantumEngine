@@ -305,8 +305,8 @@ stopping_point.md
 "Screenshot*.png"
 API_REFERENCE.md
 
-# GitHub workflows (self-hosting docs)
-.github/
+# GitHub workflows - INCLUDED for PyPI publishing
+# .github/
 
 # Documentation (moved to separate repo)
 docs/
