@@ -1,0 +1,137 @@
+/* QuantumEngine Custom Styles */
+
+/* Logo styling */
+.logo img {
+    max-height: 60px;
+    width: auto;
+}
+
+/* Quantum-themed color scheme */
+:root {
+    --quantum-cyan: #00F5FF;
+    --quantum-blue: #0080FF;
+    --quantum-purple: #8000FF;
+    --quantum-gradient: linear-gradient(135deg, var(--quantum-cyan), var(--quantum-blue), var(--quantum-purple));
+}
+
+/* Enhanced code blocks */
+.highlight {
+    border-left: 4px solid var(--quantum-cyan);
+    border-radius: 4px;
+}
+
+/* Custom admonitions */
+.admonition.note {
+    border-left: 4px solid var(--quantum-blue);
+}
+
+.admonition.tip {
+    border-left: 4px solid var(--quantum-cyan);
+}
+
+.admonition.warning {
+    border-left: 4px solid #ff6b35;
+}
+
+/* Navigation enhancements */
+.navbar-brand {
+    font-weight: 600;
+    background: var(--quantum-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Button styling */
+.btn-primary {
+    background: var(--quantum-gradient);
+    border: none;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 245, 255, 0.3);
+}
+
+/* Footer styling */
+.footer {
+    background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+    color: #fff;
+}
+
+/* Sidebar enhancements */
+.sidebar .caption {
+    color: var(--quantum-blue);
+    font-weight: 600;
+}
+
+/* Table styling */
+table.docutils {
+    border-collapse: collapse;
+}
+
+table.docutils th {
+    background: var(--quantum-gradient);
+    color: white;
+    font-weight: 600;
+}
+
+table.docutils td, table.docutils th {
+    border: 1px solid #ddd;
+    padding: 8px 12px;
+}
+
+/* Version badge */
+.version {
+    background: var(--quantum-gradient);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+/* Search box styling */
+.search input[type="text"] {
+    border: 2px solid var(--quantum-cyan);
+    border-radius: 6px;
+    transition: all 0.3s ease;
+}
+
+.search input[type="text"]:focus {
+    box-shadow: 0 0 8px rgba(0, 245, 255, 0.4);
+    outline: none;
+}
+
+/* Code inline styling */
+code.literal {
+    background: rgba(0, 245, 255, 0.1);
+    border: 1px solid rgba(0, 245, 255, 0.3);
+    color: var(--quantum-purple);
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+/* API documentation styling */
+.class > dt {
+    background: rgba(0, 245, 255, 0.05);
+    border-left: 4px solid var(--quantum-cyan);
+    padding-left: 8px;
+}
+
+.method > dt {
+    background: rgba(128, 0, 255, 0.05);
+    border-left: 4px solid var(--quantum-purple);
+    padding-left: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .logo img {
+        max-height: 40px;
+    }
+    
+    .navbar-brand {
+        font-size: 1.1em;
+    }
+}

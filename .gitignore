@@ -308,8 +308,8 @@ API_REFERENCE.md
 # GitHub workflows - INCLUDED for PyPI publishing
 # .github/
 
-# Documentation (moved to separate repo)
-docs/
+# Documentation build directory
+docs/_build/
 *.rst
 sphinx_build/
 
