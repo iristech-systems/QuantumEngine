@@ -1,4 +1,4 @@
-"""Base backend interface for SurrealEngine."""
+"""Base backend interface for QuantumEngine."""
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type, Union
@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Type, Union
 class BaseBackend(ABC):
     """Abstract base class for database backends.
     
-    All database backends must implement this interface to work with SurrealEngine.
+    All database backends must implement this interface to work with QuantumEngine.
     """
     
     def __init__(self, connection: Any) -> None:

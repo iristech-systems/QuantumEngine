@@ -12,6 +12,7 @@
   </p>
   
   <p>
+    <a href="https://iristech-systems.github.io/QuantumEngine-Docs/"><img src="https://img.shields.io/badge/docs-latest-brightgreen.svg" alt="Documentation"></a>
     <a href="https://pypi.org/project/quantumengine/"><img src="https://img.shields.io/pypi/v/quantumengine.svg" alt="PyPI version"></a>
     <a href="https://pypi.org/project/quantumengine/"><img src="https://img.shields.io/pypi/pyversions/quantumengine.svg" alt="Python versions"></a>
     <a href="https://github.com/iristech-systems/QuantumEngine/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
@@ -631,7 +632,7 @@ print(optimizations)
 
 ### Online Documentation
 
-- **GitHub Pages**: [Full Sphinx Documentation](https://your-username.github.io/quantumengine/) - Complete API reference with examples
+- **GitHub Pages**: [Full Sphinx Documentation](https://iristech-systems.github.io/QuantumEngine-Docs/) - Complete API reference with examples
 - **API Reference**: Detailed class and method documentation
 - **Quick Start Guide**: Step-by-step getting started tutorial
 - **Module Documentation**: Auto-generated from source code docstrings

@@ -1,5 +1,5 @@
 """
-DataGrid Query Helpers for SurrealEngine - Efficient database querying for grid data
+DataGrid Query Helpers for QuantumEngine - Efficient database querying for grid data
 """
 
 from typing import Dict, Any, List, Optional, Union

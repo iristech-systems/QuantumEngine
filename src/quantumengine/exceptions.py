@@ -1,21 +1,21 @@
 """
-Exceptions for SurrealEngine.
+Exceptions for QuantumEngine.
 
-This module contains custom exceptions used throughout the SurrealEngine package.
+This module contains custom exceptions used throughout the QuantumEngine package.
 """
 
 from typing import Dict, Optional, Any
 
 
-class SurrealEngineError(Exception):
-    """Base exception class for SurrealEngine.
+class QuantumEngineError(Exception):
+    """Base exception class for QuantumEngine.
 
     All other exceptions in the package inherit from this class.
     """
     pass
 
 
-class ConnectionError(SurrealEngineError):
+class ConnectionError(QuantumEngineError):
     """Raised when a connection to the database cannot be established.
 
     This exception is raised when there is an issue connecting to the SurrealDB server,
@@ -24,7 +24,7 @@ class ConnectionError(SurrealEngineError):
     pass
 
 
-class ValidationError(SurrealEngineError):
+class ValidationError(QuantumEngineError):
     """Raised when document validation fails.
 
     This exception is raised when a document fails validation, such as when
@@ -48,7 +48,7 @@ class ValidationError(SurrealEngineError):
         self.field_name: Optional[str] = field_name
 
 
-class DoesNotExist(SurrealEngineError):
+class DoesNotExist(QuantumEngineError):
     """Raised when a document does not exist in the database.
 
     This exception is raised when attempting to retrieve a document that
@@ -58,7 +58,7 @@ class DoesNotExist(SurrealEngineError):
     pass
 
 
-class MultipleObjectsReturned(SurrealEngineError):
+class MultipleObjectsReturned(QuantumEngineError):
     """Raised when multiple documents are returned when only one was expected.
 
     This exception is raised when a query that is expected to return a single
@@ -68,7 +68,7 @@ class MultipleObjectsReturned(SurrealEngineError):
     pass
 
 
-class OperationError(SurrealEngineError):
+class OperationError(QuantumEngineError):
     """Raised when a database operation fails.
 
     This exception is raised when a database operation fails, such as when
@@ -78,7 +78,7 @@ class OperationError(SurrealEngineError):
     pass
 
 
-class InvalidQueryError(SurrealEngineError):
+class InvalidQueryError(QuantumEngineError):
     """Raised when a query is invalid.
 
     This exception is raised when a query is invalid, such as when using

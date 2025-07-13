@@ -1,5 +1,5 @@
 """
-Query expression system for SurrealEngine
+Query expression system for QuantumEngine
 
 This module provides a query expression system that allows building complex
 queries programmatically and passing them to objects() and filter() methods.

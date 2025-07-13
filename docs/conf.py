@@ -42,10 +42,7 @@ templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # The suffix(es) of source filenames.
-source_suffix = {
-    '.rst': None,
-    '.md': 'myst_parser',
-}
+source_suffix = ['.rst', '.md']
 
 # The master toctree document.
 master_doc = 'index'
@@ -148,16 +145,11 @@ copybutton_prompt_is_regexp = True
 
 # MyST parser settings
 myst_enable_extensions = [
-    "amsmath",
     "colon_fence",
     "deflist",
-    "dollarmath",
     "html_admonition",
-    "html_image",
-    "linkify",
     "replacements",
     "smartquotes",
-    "substitution",
     "tasklist",
 ]
 

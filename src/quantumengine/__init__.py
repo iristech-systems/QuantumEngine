@@ -1,5 +1,5 @@
 """
-SurrealEngine: Object-Document Mapper for SurrealDB with both sync and async support
+QuantumEngine: Multi-backend Object-Document Mapper with both sync and async support
 """
 
 from .connection import (
