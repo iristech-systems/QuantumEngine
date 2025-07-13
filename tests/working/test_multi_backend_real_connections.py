@@ -15,9 +15,9 @@ from decimal import Decimal
 # Add src to path for local imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from quantumorm import Document, StringField, IntField, FloatField, BooleanField, DateTimeField, create_connection
-from quantumorm.fields.specialized import DecimalField, UUIDField
-from quantumorm.backends import BackendRegistry
+from quantumengine import Document, StringField, IntField, FloatField, BooleanField, DateTimeField, create_connection
+from quantumengine.fields.specialized import DecimalField, UUIDField
+from quantumengine.backends import BackendRegistry
 import uuid
 
 # === TEST DOCUMENT MODELS ===

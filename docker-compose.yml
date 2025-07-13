@@ -2,7 +2,7 @@
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:latest
-    container_name: quantumorm-clickhouse
+    container_name: quantumengine-clickhouse
     ports:
       - "8123:8123"  # HTTP interface
       - "9000:9000"  # Native protocol
@@ -71,4 +71,4 @@ volumes:
 
 networks:
   default:
-    name: quantumorm-network
+    name: quantumengine-network

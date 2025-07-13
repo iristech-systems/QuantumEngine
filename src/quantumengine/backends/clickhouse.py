@@ -736,6 +736,91 @@ class ClickHouseBackend(BaseBackend):
             'columnar_storage': 'Optimized for analytical workloads',
         }
     
+    # Materialized view support
+    
+    async def create_materialized_view(self, materialized_document_class: Type) -> None:
+        """Create a ClickHouse materialized view.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        meta = materialized_document_class._meta
+        
+        # Build the source query
+        source_query = materialized_document_class._build_source_query()
+        
+        # Get ClickHouse-specific configuration
+        engine = meta.get('engine', 'AggregatingMergeTree')
+        engine_params = meta.get('engine_params', [])
+        order_by = meta.get('order_by', [])
+        partition_by = meta.get('partition_by')
+        
+        # If no ORDER BY specified, use dimension fields
+        if not order_by:
+            order_by = list(materialized_document_class._dimension_fields.keys())
+        
+        # Build CREATE MATERIALIZED VIEW query
+        if engine_params:
+            params_str = ", ".join(f"`{p}`" if isinstance(p, str) else str(p) for p in engine_params)
+            engine_clause = f"ENGINE = {engine}({params_str})"
+        else:
+            engine_clause = f"ENGINE = {engine}()"
+        
+        # Build ORDER BY clause
+        if isinstance(order_by, list):
+            order_by_str = ", ".join(f"`{col}`" for col in order_by)
+        else:
+            order_by_str = f"`{order_by}`" if not order_by.startswith('`') else order_by
+        order_by_clause = f"ORDER BY ({order_by_str})"
+        
+        # Add partition clause if specified
+        partition_clause = f"PARTITION BY {partition_by}" if partition_by else ""
+        
+        # Build the complete query
+        query = f"""
+        CREATE MATERIALIZED VIEW IF NOT EXISTS {view_name}
+        {engine_clause}
+        {partition_clause}
+        {order_by_clause}
+        AS {source_query}
+        """.strip()
+        
+        # Debug: Print the generated query
+        print("Generated ClickHouse Materialized View SQL:")
+        print(query)
+        print("=" * 60)
+        
+        await self._execute(query)
+    
+    async def drop_materialized_view(self, materialized_document_class: Type) -> None:
+        """Drop a ClickHouse materialized view.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        query = f"DROP VIEW IF EXISTS {view_name}"
+        await self._execute(query)
+    
+    async def refresh_materialized_view(self, materialized_document_class: Type) -> None:
+        """Refresh a ClickHouse materialized view.
+        
+        Note: ClickHouse materialized views update automatically as data arrives.
+        This is a no-op for ClickHouse.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        # ClickHouse materialized views refresh automatically
+        pass
+    
     # Helper methods for async execution
     
     async def _execute(self, query: str) -> None:

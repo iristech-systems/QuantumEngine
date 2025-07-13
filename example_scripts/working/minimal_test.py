@@ -2,8 +2,8 @@
 
 import asyncio
 from decimal import Decimal
-from quantumorm import Document, create_connection
-from quantumorm.fields import StringField, DecimalField
+from quantumengine import Document, create_connection
+from quantumengine.fields import StringField, DecimalField
 
 class SimpleProduct(Document):
     """Minimal product document."""

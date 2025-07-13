@@ -1,4 +1,4 @@
-from quantumorm import (
+from quantumengine import (
     Document, StringField, IntField, FloatField, DateTimeField,
     create_connection, BooleanField
 )

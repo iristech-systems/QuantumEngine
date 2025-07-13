@@ -323,3 +323,190 @@ class CompressedLowCardinalityField(CompressionMixin, LowCardinalityField):
         if codec_suffix:
             return f"{base_type}{codec_suffix}"
         return base_type
+
+
+class ArrayField(Field):
+    """ClickHouse Array field with support for nested types and optimizations.
+    
+    ClickHouse arrays can contain any type including LowCardinality, Nullable,
+    and other complex types. This field provides full ClickHouse array support
+    with automatic type detection and optimization.
+    
+    Example:
+        >>> class MarketplaceData(Document):
+        ...     # Array of low cardinality strings (efficient for repeated values)
+        ...     tags = ArrayField(LowCardinalityField())
+        ...     
+        ...     # Array of integers
+        ...     ratings = ArrayField(IntField())
+        ...     
+        ...     # Array of strings with compression
+        ...     urls = ArrayField(StringField(), codec="LZ4")
+    """
+    
+    def __init__(self, element_field: Field, codec: Optional[str] = None, **kwargs: Any) -> None:
+        """Initialize a new ArrayField.
+        
+        Args:
+            element_field: The field type for array elements
+            codec: Optional ClickHouse compression codec for the array
+            **kwargs: Additional arguments passed to Field
+        """
+        self.element_field = element_field
+        self.codec = codec
+        super().__init__(**kwargs)
+        self.py_type = list
+    
+    def validate(self, value: Any) -> Optional[List[Any]]:
+        """Validate the array value and all elements.
+        
+        Args:
+            value: The value to validate
+            
+        Returns:
+            The validated array value
+            
+        Raises:
+            TypeError: If the value is not a list
+            ValueError: If an element fails validation
+        """
+        value = super().validate(value)
+        if value is not None:
+            if not isinstance(value, list):
+                raise TypeError(f"Expected list for field '{self.name}', got {type(value)}")
+            
+            # Validate each element using the element field
+            validated_elements = []
+            for i, element in enumerate(value):
+                try:
+                    validated_element = self.element_field.validate(element)
+                    validated_elements.append(validated_element)
+                except (TypeError, ValueError) as e:
+                    raise ValueError(f"Error validating element {i} in array field '{self.name}': {str(e)}")
+            
+            return validated_elements
+        return value
+    
+    def _to_db_backend_specific(self, value: Any, backend: str) -> Any:
+        """Backend-specific conversion for Array fields.
+        
+        Args:
+            value: The Python value to convert
+            backend: The backend type
+            
+        Returns:
+            Backend-appropriate representation
+        """
+        if value is not None:
+            if backend == 'clickhouse':
+                # ClickHouse arrays are stored as native arrays
+                # Convert each element using the element field
+                converted_elements = []
+                for element in value:
+                    if hasattr(self.element_field, '_to_db_backend_specific'):
+                        converted_element = self.element_field._to_db_backend_specific(element, backend)
+                    else:
+                        converted_element = self.element_field.to_db(element)
+                    converted_elements.append(converted_element)
+                return converted_elements
+            elif backend == 'surrealdb':
+                # SurrealDB stores arrays as native arrays
+                converted_elements = []
+                for element in value:
+                    if hasattr(self.element_field, '_to_db_backend_specific'):
+                        converted_element = self.element_field._to_db_backend_specific(element, backend)
+                    else:
+                        converted_element = self.element_field.to_db(element)
+                    converted_elements.append(converted_element)
+                return converted_elements
+            else:
+                # For other backends, convert to JSON string
+                import json
+                return json.dumps(value)
+        return value
+    
+    def _from_db_backend_specific(self, value: Any, backend: str) -> Optional[List[Any]]:
+        """Backend-specific conversion from database.
+        
+        Args:
+            value: The database value to convert
+            backend: The backend type
+            
+        Returns:
+            Python list representation
+        """
+        if value is not None:
+            if backend in ['clickhouse', 'surrealdb']:
+                # Both ClickHouse and SurrealDB return arrays as lists
+                converted_elements = []
+                for element in value:
+                    if hasattr(self.element_field, '_from_db_backend_specific'):
+                        converted_element = self.element_field._from_db_backend_specific(element, backend)
+                    else:
+                        converted_element = self.element_field.from_db(element)
+                    converted_elements.append(converted_element)
+                return converted_elements
+            else:
+                # For other backends, parse from JSON string
+                import json
+                return json.loads(value)
+        return value
+    
+    def get_clickhouse_type(self) -> str:
+        """Get the ClickHouse-specific field type.
+        
+        Returns:
+            The ClickHouse field type definition
+        """
+        # Get the element type from the element field
+        if hasattr(self.element_field, 'get_clickhouse_type'):
+            element_type = self.element_field.get_clickhouse_type()
+        else:
+            # Fallback to basic type mapping
+            element_type = self._get_basic_clickhouse_type(self.element_field)
+        
+        array_type = f"Array({element_type})"
+        
+        # Add compression codec if specified
+        if self.codec:
+            array_type += f" CODEC({self.codec})"
+        
+        return array_type
+    
+    def get_surrealdb_type(self) -> str:
+        """Get the SurrealDB fallback field type.
+        
+        Returns:
+            The SurrealDB field type definition
+        """
+        return "array"
+    
+    def _get_basic_clickhouse_type(self, field: Field) -> str:
+        """Get basic ClickHouse type for a field.
+        
+        Args:
+            field: The field to get type for
+            
+        Returns:
+            ClickHouse type string
+        """
+        from .scalar import StringField, IntField, FloatField, BooleanField
+        from .datetime import DateTimeField
+        from .specialized import DecimalField, UUIDField
+        
+        if isinstance(field, StringField):
+            return "String"
+        elif isinstance(field, IntField):
+            return "Int64"  # Safe default for integers
+        elif isinstance(field, FloatField):
+            return "Float64"
+        elif isinstance(field, BooleanField):
+            return "UInt8"  # ClickHouse uses UInt8 for booleans
+        elif isinstance(field, DateTimeField):
+            return "DateTime"
+        elif isinstance(field, DecimalField):
+            return f"Decimal({field.max_digits}, {field.decimal_places})"
+        elif isinstance(field, UUIDField):
+            return "UUID"
+        else:
+            return "String"  # Default fallback

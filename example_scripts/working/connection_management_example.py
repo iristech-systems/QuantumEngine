@@ -16,14 +16,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import asyncio
 import logging
-from quantumorm import (
+from quantumengine import (
     Document,
     StringField,
     IntField,
     create_connection
 )
 # Advanced connection management features
-from quantumorm.connection import (
+from quantumengine.connection import (
     SyncConnectionPool,
     AsyncConnectionPool,
     RetryStrategy

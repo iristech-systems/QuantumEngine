@@ -18,7 +18,7 @@ class GeometryField(Field):
         ...     point = GeometryField()
         >>> 
         >>> # Using GeometryPoint for precise coordinate handling
-        >>> from quantumorm.geometry import GeometryPoint
+        >>> from quantumengine.geometry import GeometryPoint
         >>> loc = Location(point=GeometryPoint([-122.4194, 37.7749]))
     """
 

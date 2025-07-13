@@ -69,6 +69,8 @@ class DocumentMetaclass(type):
             'primary_key': getattr(meta, 'primary_key', None),
             'ttl': getattr(meta, 'ttl', None),
             'settings': getattr(meta, 'settings', None),
+            # MaterializedDocument-specific attributes
+            'view_name': getattr(meta, 'view_name', None),
         }
 
         # Process fields

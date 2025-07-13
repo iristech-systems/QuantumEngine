@@ -4,8 +4,8 @@
 import asyncio
 import datetime
 from decimal import Decimal
-from quantumorm import Document, create_connection
-from quantumorm.fields import (
+from quantumengine import Document, create_connection
+from quantumengine.fields import (
     StringField, IntField, FloatField, DecimalField, BooleanField,
     DateTimeField, DurationField, ListField, DictField, OptionField, RangeField
 )

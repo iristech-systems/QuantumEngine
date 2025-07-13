@@ -18,10 +18,10 @@ from decimal import Decimal
 # Add src to path for local imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from quantumorm import Document, StringField, IntField, FloatField, BooleanField, DateTimeField, create_connection
-from quantumorm.fields.specialized import DecimalField, UUIDField
-from quantumorm.connection import ConnectionRegistry
-from quantumorm.backends import BackendRegistry
+from quantumengine import Document, StringField, IntField, FloatField, BooleanField, DateTimeField, create_connection
+from quantumengine.fields.specialized import DecimalField, UUIDField
+from quantumengine.connection import ConnectionRegistry
+from quantumengine.backends import BackendRegistry
 import uuid
 
 # === DOCUMENT MODELS ===
@@ -278,7 +278,7 @@ async def test_backend_architecture():
     print(f"ClickHouse backend class: {clickhouse_backend_class.__name__}")
     
     # Test that they implement the same interface
-    from quantumorm.backends.base import BaseBackend
+    from quantumengine.backends.base import BaseBackend
     
     assert issubclass(surrealdb_backend_class, BaseBackend), "SurrealDB should extend BaseBackend"
     assert issubclass(clickhouse_backend_class, BaseBackend), "ClickHouse should extend BaseBackend"

@@ -62,6 +62,20 @@ from .materialized_view import (
     Distinct,
     GroupConcat
 )
+from .materialized_document import (
+    MaterializedDocument,
+    MaterializedField,
+    Count as MaterializedCount,
+    Sum as MaterializedSum,
+    Avg as MaterializedAvg,
+    Min as MaterializedMin,
+    Max as MaterializedMax,
+    CountDistinct,
+    Variance as MaterializedVariance,
+    StdDev as MaterializedStdDev,
+    ToDate,
+    ToYearMonth
+)
 from .query import QuerySet, RelationQuerySet
 from .query_expressions import Q, QueryExpression
 from .aggregation import AggregationPipeline
@@ -127,6 +141,8 @@ __all__ = [
     "SlugField",
     "ChoiceField",
     "MaterializedView",
+    "MaterializedDocument",
+    "MaterializedField",
     # Aggregation classes
     "AggregationPipeline",
     "Aggregation",

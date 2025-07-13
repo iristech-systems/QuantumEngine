@@ -1,0 +1,17 @@
+include README.md
+include LICENSE
+include INSTALLATION.md
+include PYPI_SETUP_GUIDE.md
+include MANIFEST.in
+recursive-include src/quantumengine *.py
+include src/quantumengine/py.typed
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude *.so
+global-exclude .git*
+prune .github
+prune tests
+prune notebooks
+prune example_scripts
+prune external_docs

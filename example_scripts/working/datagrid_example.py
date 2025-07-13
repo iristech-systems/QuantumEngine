@@ -5,7 +5,7 @@ This shows how to replace your current Python-based filtering with efficient Sur
 """
 
 import asyncio
-from quantumorm import (
+from quantumengine import (
     get_grid_data, 
     parse_datatables_params, 
     format_datatables_response,

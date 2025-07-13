@@ -18,13 +18,13 @@ from typing import List
 
 from surrealdb import RecordID
 
-# Add the src directory to the path so we can import quantumorm
+# Add the src directory to the path so we can import quantumengine
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from quantumorm import Document, create_connection
-from quantumorm.fields import StringField, IntField, ReferenceField
-from quantumorm.connection import ConnectionRegistry
-from quantumorm.backends import BackendRegistry
+from quantumengine import Document, create_connection
+from quantumengine.fields import StringField, IntField, ReferenceField
+from quantumengine.connection import ConnectionRegistry
+from quantumengine.backends import BackendRegistry
 
 
 class User(Document):

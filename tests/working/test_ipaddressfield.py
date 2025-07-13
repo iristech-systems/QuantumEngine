@@ -1,4 +1,4 @@
-from quantumorm.fields import IPAddressField
+from quantumengine.fields import IPAddressField
 
 # Test with version parameter
 field1 = IPAddressField(version='ipv4')

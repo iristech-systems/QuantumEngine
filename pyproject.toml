@@ -3,48 +3,87 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "quantumorm"
-version = "1.0.0"
-description = "Multi-Backend Object-Document Mapper (ODM) for SurrealDB, ClickHouse, and more - Quantum-powered ORM"
+name = "quantumengine"
+version = "0.1.0"
+description = "Multi-Backend Object-Document Mapper (ODM) for ClickHouse, SurrealDB, and more - Quantum-Powered Database Engine"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 license = {text = "MIT License"}
 authors = [
-    {name = "Iristech Systems"}
+    {name = "Iristech Systems", email = "contact@iristech.systems"}
 ]
-keywords = ["surrealdb", "clickhouse", "odm", "database", "async", "orm", "multi-backend"]
+maintainers = [
+    {name = "Iristech Systems", email = "contact@iristech.systems"}
+]
+keywords = ["orm", "odm", "clickhouse", "surrealdb", "database", "async", "multi-backend", "analytics", "graph-database", "quantum", "engine"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Database",
+    "Topic :: Database :: Database Engines/Servers",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Framework :: AsyncIO",
+    "Operating System :: OS Independent",
+    "Typing :: Typed",
 ]
 dependencies = [
-    "surrealdb==1.0.4",
-    "clickhouse-connect>=0.7.0",
+    "typing-extensions>=4.0.0",
 ]
 
 [project.optional-dependencies]
+# Backend-specific dependencies
+clickhouse = [
+    "clickhouse-connect>=0.7.0",
+]
+surrealdb = [
+    "surrealdb==1.0.4",
+]
+
+# Additional features
 signals = [
     "blinker>=1.6.2",
 ]
 jupyter = [
     "notebook==7.2.2",
 ]
+
+# Development and testing
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.20.0",
+    "mypy>=1.0.0",
+    "black>=22.0.0",
+    "ruff>=0.1.0",
+]
+
+# All backends and features
 all = [
+    "clickhouse-connect>=0.7.0",
+    "surrealdb==1.0.4",
     "blinker>=1.6.2",
     "notebook==7.2.2",
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/iristech-systems/quantumorm"
-"Bug Tracker" = "https://github.com/iristech-systems/quantumorm/issues"
+"Homepage" = "https://github.com/iristech-systems/QuantumEngine"
+"Repository" = "https://github.com/iristech-systems/QuantumEngine"
+"Documentation" = "https://github.com/iristech-systems/QuantumEngine#readme"
+"Bug Tracker" = "https://github.com/iristech-systems/QuantumEngine/issues"
+"Changelog" = "https://github.com/iristech-systems/QuantumEngine/releases"
+"Download" = "https://pypi.org/project/quantumengine/"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+quantumengine = ["py.typed"]
 
 [dependency-groups]
 docs = [

@@ -6,7 +6,7 @@ including fetch with objects(query) and filter(query) syntax.
 """
 
 import asyncio
-from quantumorm import (
+from quantumengine import (
     Document, StringField, IntField, BooleanField, ReferenceField,
     create_connection, Q, QueryExpression
 )

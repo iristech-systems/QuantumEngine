@@ -17,10 +17,10 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 try:
-    from src.quantumorm.fields.scalar import StringField, IntField, FloatField, BooleanField
-    from src.quantumorm.fields.datetime import DateTimeField
-    from src.quantumorm.document import Document
-    from src.quantumorm.query.base import QuerySet
+    from src.quantumengine.fields.scalar import StringField, IntField, FloatField, BooleanField
+    from src.quantumengine.fields.datetime import DateTimeField
+    from src.quantumengine.document import Document
+    from src.quantumengine.query.base import QuerySet
     print("✅ Successfully imported enhanced type-safe components")
 except ImportError as e:
     print(f"❌ Failed to import components: {e}")
@@ -120,7 +120,7 @@ def test_type_annotations():
     print(f"StringField.validate return type: {validate_annotation}")
     
     # Test that the Field class is properly generic
-    from src.quantumorm.fields.base import Field
+    from src.quantumengine.fields.base import Field
     print(f"Field class bases: {Field.__orig_bases__ if hasattr(Field, '__orig_bases__') else 'Not generic'}")
     
     print("✅ Type annotations verified")

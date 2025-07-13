@@ -20,14 +20,14 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 try:
-    from src.quantumorm.connection import ConnectionRegistry
-    from src.quantumorm.backends.clickhouse import ClickHouseBackend
-    from src.quantumorm.document import Document
-    from src.quantumorm.fields import (
+    from src.quantumengine.connection import ConnectionRegistry
+    from src.quantumengine.backends.clickhouse import ClickHouseBackend
+    from src.quantumengine.document import Document
+    from src.quantumengine.fields import (
         StringField, DecimalField, DateTimeField, BooleanField, 
         IntField, FloatField
     )
-    from src.quantumorm.fields.clickhouse import (
+    from src.quantumengine.fields.clickhouse import (
         LowCardinalityField, CompressedStringField
     )
     print("✅ Successfully imported QuantumORM components")

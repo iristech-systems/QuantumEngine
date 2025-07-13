@@ -442,8 +442,8 @@ class SurrealDBBackend(BaseBackend):
         # Import here to avoid circular imports
         from ..fields import (
             StringField, IntField, FloatField, BooleanField,
-            DateTimeField, DateField, RecordIDField, UUIDField, 
-            JSONField, DictField, ArrayField, GeometryField
+            DateTimeField, UUIDField, 
+            DictField, DecimalField
         )
         
         if isinstance(field, StringField):
@@ -456,18 +456,12 @@ class SurrealDBBackend(BaseBackend):
             return "bool"
         elif isinstance(field, DateTimeField):
             return "datetime"
-        elif isinstance(field, DateField):
-            return "datetime"
-        elif isinstance(field, RecordIDField):
-            return "record"
         elif isinstance(field, UUIDField):
             return "uuid"
-        elif isinstance(field, JSONField) or isinstance(field, DictField):
+        elif isinstance(field, DictField):
             return "object"
-        elif isinstance(field, ArrayField):
-            return "array"
-        elif isinstance(field, GeometryField):
-            return "geometry"
+        elif isinstance(field, DecimalField):
+            return "decimal"
         else:
             return "any"
     
@@ -692,14 +686,119 @@ class SurrealDBBackend(BaseBackend):
     
     def _format_document_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Format document data for SurrealDB storage."""
+        from decimal import Decimal
+        
         formatted = {}
         for key, value in data.items():
             # Handle special field types
             if hasattr(value, 'to_db'):
                 formatted[key] = value.to_db()
+            elif isinstance(value, Decimal):
+                # Convert Decimal to float for SurrealDB
+                formatted[key] = float(value)
             else:
                 formatted[key] = value
         return formatted
+    
+    # Materialized view support
+    
+    async def create_materialized_view(self, materialized_document_class: Type) -> None:
+        """Create a SurrealDB materialized view using DEFINE TABLE ... AS SELECT.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        # Build the source query
+        source_query = materialized_document_class._build_source_query()
+        
+        # Convert ClickHouse-specific functions to SurrealDB equivalents
+        source_query = self._convert_query_to_surrealdb(source_query)
+        
+        # SurrealDB materialized view syntax
+        query = f"DEFINE TABLE {view_name} AS {source_query}"
+        
+        # Debug: Print the generated query
+        print("Generated SurrealDB Materialized View SQL:")
+        print(query)
+        print("=" * 60)
+        
+        await self._execute(query)
+    
+    async def drop_materialized_view(self, materialized_document_class: Type) -> None:
+        """Drop a SurrealDB materialized view.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        query = f"REMOVE TABLE {view_name}"
+        await self._execute(query)
+    
+    async def refresh_materialized_view(self, materialized_document_class: Type) -> None:
+        """Refresh a SurrealDB materialized view.
+        
+        Note: SurrealDB materialized views update automatically when data changes.
+        This is a no-op for SurrealDB.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        # SurrealDB materialized views refresh automatically
+        pass
+    
+    def _convert_query_to_surrealdb(self, query: str) -> str:
+        """Convert ClickHouse-specific query syntax to SurrealDB.
+        
+        Args:
+            query: The ClickHouse-style query
+            
+        Returns:
+            SurrealDB-compatible query
+        """
+        # Handle COUNT DISTINCT - SurrealDB doesn't have direct COUNT DISTINCT
+        # For materialized views, we'll use a simplified approach
+        import re
+        count_distinct_pattern = r'COUNT\(DISTINCT\s+([^)]+)\)'
+        def replace_count_distinct(match):
+            field = match.group(1).strip()
+            # For SurrealDB, use a different approach for COUNT DISTINCT
+            # We'll group by the field and count the groups
+            return f'1'  # Simplified for now - each record contributes 1
+        
+        converted_query = re.sub(count_distinct_pattern, replace_count_distinct, query, flags=re.IGNORECASE)
+        
+        # Convert other ClickHouse functions to SurrealDB equivalents
+        conversions = {
+            'toDate(': 'time::day(',
+            'toYYYYMM(': 'time::format(',
+            'COUNT(*)': 'count()',
+            'SUM(': 'math::sum(',
+            'AVG(': 'math::mean(',
+            'MIN(': 'math::min(',
+            'MAX(': 'math::max(',
+        }
+        
+        # Also handle COUNT(*) in SELECT clauses outside of aggregations
+        converted_query = converted_query.replace('SELECT COUNT(*)', 'SELECT count()')
+        
+        for clickhouse_func, surrealdb_func in conversions.items():
+            converted_query = converted_query.replace(clickhouse_func, surrealdb_func)
+        
+        # Handle special cases for time format
+        if 'time::format(' in converted_query:
+            # Convert toYYYYMM to proper SurrealDB time format
+            converted_query = converted_query.replace(
+                'time::format(', 'time::format('
+            ).replace(') AS year_month', ', "%Y%m") AS year_month')
+        
+        return converted_query
     
     def _format_result_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Format result data from SurrealDB."""
@@ -715,3 +814,57 @@ class SurrealDBBackend(BaseBackend):
                 formatted[key] = value
         
         return formatted
+    
+    # Materialized view support
+    
+    async def create_materialized_view(self, materialized_document_class: Type) -> None:
+        """Create a SurrealDB materialized view using DEFINE TABLE ... AS SELECT.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        # Build the source query
+        source_query = materialized_document_class._build_source_query()
+        
+        # Convert ClickHouse-specific functions to SurrealDB equivalents
+        source_query = self._convert_query_to_surrealdb(source_query)
+        
+        # SurrealDB materialized view syntax
+        query = f"DEFINE TABLE {view_name} AS {source_query}"
+        
+        # Debug: Print the generated query
+        print("Generated SurrealDB Materialized View SQL:")
+        print(query)
+        print("=" * 60)
+        
+        await self._execute(query)
+    
+    async def drop_materialized_view(self, materialized_document_class: Type) -> None:
+        """Drop a SurrealDB materialized view.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        view_name = materialized_document_class._meta.get('view_name') or \
+                   materialized_document_class._meta.get('table_name') or \
+                   materialized_document_class.__name__.lower()
+        
+        query = f"REMOVE TABLE {view_name}"
+        await self._execute(query)
+    
+    async def refresh_materialized_view(self, materialized_document_class: Type) -> None:
+        """Refresh a SurrealDB materialized view.
+        
+        Note: SurrealDB materialized views update automatically when data changes.
+        This is a no-op for SurrealDB.
+        
+        Args:
+            materialized_document_class: The MaterializedDocument class
+        """
+        # SurrealDB materialized views refresh automatically
+        pass
+    

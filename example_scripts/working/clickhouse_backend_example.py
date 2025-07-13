@@ -27,13 +27,13 @@ client = clickhouse_connect.get_client(
 )
 
 # 2. Register the connection with SurrealEngine
-from quantumorm import ConnectionRegistry
+from quantumengine import ConnectionRegistry
 ConnectionRegistry.register('clickhouse_main', client, 'clickhouse')
 ConnectionRegistry.set_default('clickhouse', 'clickhouse_main')
 
 # 3. Define a document for time-series data
-from quantumorm import Document
-from quantumorm.fields import StringField, FloatField, DateTimeField, IntField
+from quantumengine import Document
+from quantumengine.fields import StringField, FloatField, DateTimeField, IntField
 
 class PriceMonitoring(Document):
     seller_name = StringField(required=True)
@@ -158,14 +158,14 @@ import os
 from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from quantumorm import create_connection
+from quantumengine import create_connection
 
 async def test_clickhouse_backend():
     """Test the ClickHouse backend using enhanced create_connection."""
     
     # Import the backend
-    from quantumorm.backends.clickhouse import ClickHouseBackend
-    from quantumorm.connection import ConnectionRegistry
+    from quantumengine.backends.clickhouse import ClickHouseBackend
+    from quantumengine.connection import ConnectionRegistry
     
     # Create ClickHouse connection using enhanced create_connection
     connection = create_connection(

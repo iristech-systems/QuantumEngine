@@ -16,7 +16,7 @@ from datetime import datetime, timezone, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))
 
 import clickhouse_connect
-from quantumorm.backends.clickhouse import ClickHouseBackend
+from quantumengine.backends.clickhouse import ClickHouseBackend
 
 
 async def test_clickhouse_backend():

@@ -1,12 +1,56 @@
-# QuantumORM
+<div align="center">
+  <img src="quantumengine_logo.svg" alt="QuantumEngine Logo" width="400" style="margin-bottom: 20px;">
+  
+  <h1>QuantumEngine</h1>
+  
+  <p>
+    <strong>A powerful, multi-backend Object-Document Mapper (ODM) for Python</strong>
+  </p>
+  
+  <p>
+    Unified API for both transactional and analytical databases<br>
+    Supporting SurrealDB (graph/document) and ClickHouse (columnar analytical) with a single, consistent interface
+  </p>
+  
+  <p>
+    <a href="https://pypi.org/project/quantumengine/"><img src="https://img.shields.io/pypi/v/quantumengine.svg" alt="PyPI version"></a>
+    <a href="https://pypi.org/project/quantumengine/"><img src="https://img.shields.io/pypi/pyversions/quantumengine.svg" alt="Python versions"></a>
+    <a href="https://github.com/iristech-systems/QuantumEngine/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+    <a href="https://github.com/iristech-systems/QuantumEngine/actions"><img src="https://github.com/iristech-systems/QuantumEngine/workflows/Tests/badge.svg" alt="Tests"></a>
+    <a href="https://pypi.org/project/quantumengine/"><img src="https://img.shields.io/pypi/dm/quantumengine.svg" alt="Downloads"></a>
+  </p>
+</div>
 
-A powerful, multi-backend Object-Document Mapper (ODM) for Python that provides a unified API for working with both transactional and analytical databases. QuantumORM supports both SurrealDB (graph/document database) and ClickHouse (columnar analytical database) with a single, consistent interface.
+---
+
+## 📦 Installation
+
+QuantumEngine uses a **modular installation system** - install only the backends you need:
+
+```bash
+# Core package only (lightweight)
+pip install quantumengine
+
+# With ClickHouse support
+pip install quantumengine[clickhouse]
+
+# With SurrealDB support  
+pip install quantumengine[surrealdb]
+
+# With both backends
+pip install quantumengine[clickhouse,surrealdb]
+
+# Everything (all backends + dev tools)
+pip install quantumengine[all]
+```
+
+See [INSTALLATION.md](INSTALLATION.md) for detailed installation options and troubleshooting.
 
 ## 🚀 Quick Start
 
 ```python
 import os
-from quantumorm import Document, StringField, IntField, create_connection
+from quantumengine import Document, StringField, IntField, create_connection
 
 # Define a document model
 class User(Document):
@@ -125,7 +169,7 @@ count = await User.objects.filter(age__gte=21).count()
 
 #### Q Objects for Complex Queries
 ```python
-from quantumorm import Q
+from quantumengine import Q
 
 # Combine conditions
 complex_query = Q(age__gte=18) & Q(age__lte=65) & Q(active=True)
@@ -223,7 +267,7 @@ await analytics_backend.create_table(
 
 #### Drop Tables & Migration Support
 ```python
-from quantumorm import (
+from quantumengine import (
     generate_drop_statements, generate_migration_statements,
     drop_tables_from_module
 )
@@ -337,7 +381,7 @@ with connection:
 ### 📈 DataGrid Helpers
 
 ```python
-from quantumorm import get_grid_data, parse_datatables_params
+from quantumengine import get_grid_data, parse_datatables_params
 
 # Efficient grid operations for web interfaces
 result = await get_grid_data(
@@ -356,7 +400,7 @@ result = format_datatables_response(total, rows, draw)
 ## 📦 Installation
 
 ```bash
-pip install quantumorm
+pip install quantumengine
 
 # For SurrealDB support
 pip install surrealdb
@@ -370,7 +414,7 @@ pip install clickhouse-connect
 ### Environment Variables
 ```python
 import os
-from quantumorm import create_connection
+from quantumengine import create_connection
 
 # Using environment variables
 connection = create_connection(
@@ -427,7 +471,7 @@ await user.delete()
 
 ### Advanced Queries
 ```python
-from quantumorm import Q, QueryExpression
+from quantumengine import Q, QueryExpression
 
 # Complex filtering
 active_adults = await User.objects.filter(
@@ -474,7 +518,7 @@ page_views = await PageView.objects.filter(user_id=str(user.id)).all()
 ### Schema Management Examples
 ```python
 # Generate schema statements
-from quantumorm import generate_schema_statements, generate_drop_statements
+from quantumengine import generate_schema_statements, generate_drop_statements
 
 # Create schema
 schema_statements = generate_schema_statements(User, schemafull=True)
@@ -487,7 +531,7 @@ for stmt in drop_statements:
     print(stmt)
 
 # Generate migration between versions
-from quantumorm import generate_migration_statements
+from quantumengine import generate_migration_statements
 
 class UserV1(Document):
     username = StringField(required=True)

@@ -315,3 +315,10 @@ sphinx_build/
 
 # Enhancement suggestions and implementation notes
 enhancements.md
+enhancement_plan.md
+clickhouse_enhancement_analysis.md
+clickhouse_implementation_plan.md
+redis_backend.md
+MATERIALIZED_DOCUMENT_TESTS.md
+PYPI_READY_SUMMARY.md
+PYPI_SETUP_GUIDE.md

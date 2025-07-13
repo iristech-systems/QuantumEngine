@@ -23,7 +23,7 @@ from .additional import (
 )
 from .clickhouse import (
     LowCardinalityField, FixedStringField, EnumField,
-    CompressedStringField, CompressedLowCardinalityField
+    CompressedStringField, CompressedLowCardinalityField, ArrayField
 )
 
 # Export all classes at the top level to maintain the same import interface
@@ -39,5 +39,5 @@ __all__ = [
     'EmailField', 'URLField', 'IPAddressField', 'SlugField', 'ChoiceField',
     'OptionField', 'FutureField', 'TableField', 'RangeField',
     'LowCardinalityField', 'FixedStringField', 'EnumField',
-    'CompressedStringField', 'CompressedLowCardinalityField',
+    'CompressedStringField', 'CompressedLowCardinalityField', 'ArrayField',
 ]

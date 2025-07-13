@@ -20,10 +20,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 import clickhouse_connect
 
 # SurrealEngine imports 
-from quantumorm import create_connection
-from quantumorm.connection import ConnectionRegistry
-from quantumorm.backends.clickhouse import ClickHouseBackend
-from quantumorm.backends.surrealdb import SurrealDBBackend
+from quantumengine import create_connection
+from quantumengine.connection import ConnectionRegistry
+from quantumengine.backends.clickhouse import ClickHouseBackend
+from quantumengine.backends.surrealdb import SurrealDBBackend
 
 
 class DemoUser:

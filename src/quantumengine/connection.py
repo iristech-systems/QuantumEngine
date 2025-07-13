@@ -1900,11 +1900,19 @@ def create_connection(url: Optional[str] = None, namespace: Optional[str] = None
         return connection
         
     elif backend == 'clickhouse':
-        # ClickHouse connection creation
+        # ClickHouse connection creation using modular backend system
+        from .backends import BackendRegistry
+        
+        # Check if ClickHouse backend is available
+        if not BackendRegistry.is_backend_available('clickhouse'):
+            # This will raise ImportError with helpful message
+            BackendRegistry.get_backend('clickhouse')
+        
         try:
             import clickhouse_connect
         except ImportError:
-            raise ImportError("clickhouse-connect is required for ClickHouse backend. Install with: pip install clickhouse-connect")
+            # This should be caught by the BackendRegistry, but just in case
+            raise ImportError("ClickHouse backend requires 'clickhouse-connect'. Install with: pip install quantumengine[clickhouse]")
         
         # Build ClickHouse connection parameters
         clickhouse_params = {
@@ -1933,8 +1941,31 @@ def create_connection(url: Optional[str] = None, namespace: Optional[str] = None
         return connection
         
     else:
-        # Generic backend connection creation
-        raise ValueError(f"Unsupported backend: {backend}. Supported backends: surrealdb, clickhouse")
+        # Generic backend connection creation using BackendRegistry
+        from .backends import BackendRegistry
+        
+        # Check if the backend is available
+        try:
+            backend_class = BackendRegistry.get_backend(backend)
+        except (ImportError, ValueError) as e:
+            # Re-raise with additional context
+            available = BackendRegistry.list_backends()
+            failed = BackendRegistry.list_failed_backends()
+            
+            error_msg = str(e)
+            if failed:
+                error_msg += f"\n\nAvailable installation commands:"
+                for failed_backend, install_msg in failed.items():
+                    error_msg += f"\n  - {install_msg}"
+            
+            if isinstance(e, ImportError):
+                raise ImportError(error_msg)
+            else:
+                raise ValueError(error_msg)
+        
+        # For future backends, we would create the connection here
+        # For now, raise an error for unsupported backends
+        raise ValueError(f"Backend '{backend}' found but connection creation not yet implemented")
 
 
 class SurrealEngineSyncConnection:

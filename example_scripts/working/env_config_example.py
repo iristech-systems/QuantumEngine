@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import asyncio
 import os
-from quantumorm import (
+from quantumengine import (
     Document, StringField, IntField, create_connection
 )
 

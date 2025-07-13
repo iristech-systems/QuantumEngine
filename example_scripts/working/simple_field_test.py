@@ -2,8 +2,8 @@
 
 import asyncio
 from decimal import Decimal
-from quantumorm import Document
-from quantumorm.fields import DecimalField, IntField, FloatField, DurationField, RangeField, OptionField
+from quantumengine import Document
+from quantumengine.fields import DecimalField, IntField, FloatField, DurationField, RangeField, OptionField
 
 # Define a simple document class to test field validation
 class TestProduct(Document):
