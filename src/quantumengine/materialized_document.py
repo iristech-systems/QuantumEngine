@@ -204,6 +204,11 @@ class MaterializedDocumentMetaclass(DocumentMetaclass):
                     filters[attr_name] = attr_value
             attrs['_filters'] = filters
         else:
+            # Check for where clause in Meta
+            where_clause = getattr(meta, 'where', None)
+            if where_clause:
+                # Parse simple where clause like "processing_status = 'pending'"
+                attrs['_where_clause'] = where_clause
             attrs['_filters'] = {}
         
         # Extract having conditions if defined
@@ -261,6 +266,7 @@ class MaterializedDocument(Document, metaclass=MaterializedDocumentMetaclass):
     _metric_fields: ClassVar[Dict[str, MaterializedField]] = {}
     _filters: ClassVar[Dict[str, Any]] = {}
     _having: ClassVar[Dict[str, Any]] = {}
+    _where_clause: ClassVar[Optional[str]] = None
     
     @classmethod
     async def create_view(cls) -> None:
@@ -378,7 +384,10 @@ class MaterializedDocument(Document, metaclass=MaterializedDocumentMetaclass):
         # Build query
         query = f"SELECT {', '.join(select_parts)} FROM {table_name}"
         
-        if where_parts:
+        # Add WHERE clause from either filters or direct where clause
+        if hasattr(cls, '_where_clause') and cls._where_clause:
+            query += f" WHERE {cls._where_clause}"
+        elif where_parts:
             query += f" WHERE {' AND '.join(where_parts)}"
         
         if group_by_parts:

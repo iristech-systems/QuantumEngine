@@ -1972,142 +1972,31 @@ class Document(metaclass=DocumentMetaclass):
 
         Args:
             connection: Optional connection to use
-            schemafull: Whether to create a SCHEMAFULL table (default: True)
+            schemafull: Whether to create a SCHEMAFULL table (default: True, only applies to SurrealDB)
         """
-        if connection is None:
-            connection = ConnectionRegistry.get_default_connection()
-
-        collection_name = cls._get_collection_name()
-
-        # Create the table
-        schema_type = "SCHEMAFULL" if schemafull else "SCHEMALESS"
-        query = f"DEFINE TABLE {collection_name} {schema_type}"
-
-        # Check if this is a time series table
-        is_time_series = False
-        time_field = None
-
-        # Check if the Meta class has time_series and time_field attributes
-        if hasattr(cls, '_meta'):
-            is_time_series = cls._meta.get('time_series', False)
-            time_field = cls._meta.get('time_field')
-
-        # If time_series is True but time_field is not specified, try to find a TimeSeriesField
-        if is_time_series and not time_field:
-            for field_name, field in cls._fields.items():
-                if field.__class__.__name__ == 'TimeSeriesField':
-                    time_field = field.db_field
-                    break
-
-        # Add time series configuration if applicable
-        if is_time_series and time_field:
-            query += f" TYPE TIMESTAMP TIMEFIELD {time_field}"
-
-        # Add comment if available
-        if hasattr(cls, '__doc__') and cls.__doc__:
-            # Clean up docstring and escape single quotes
-            doc = cls.__doc__.strip().replace("'", "''")
-            if doc:
-                query += f" COMMENT '{doc}'"
-
-        await connection.client.query(query)
-
-        # Create fields if schemafull or if field is marked with define_schema=True
-        for field_name, field in cls._fields.items():
-            # Skip id field as it's handled by SurrealDB
-            if field_name == cls._meta.get('id_field', 'id'):
-                continue
-
-            # Only define fields if schemafull or if field is explicitly marked for schema definition
-            if schemafull or field.define_schema:
-                field_type = cls._get_field_type_for_surreal(field)
-                field_query = f"DEFINE FIELD {field.db_field} ON {collection_name} TYPE {field_type}"
-
-                # Add constraints
-                if field.required:
-                    field_query += " ASSERT $value != NONE"
-
-
-                await connection.client.query(field_query)
-
-                # Handle nested fields for DictField
-                if isinstance(field, DictField) and schemafull:
-                    if field.db_field == 'settings':
-                        nested_field_query = f"DEFINE FIELD {field.db_field}.theme ON {collection_name} TYPE string"
-                        await connection.client.query(nested_field_query)
+        # Get the backend for this document
+        backend = cls._get_backend()
+        
+        # Delegate to backend-specific create_table method
+        if hasattr(backend, 'create_table'):
+            await backend.create_table(cls, schemafull=schemafull)
+        else:
+            # Fallback for backends without create_table method
+            raise NotImplementedError(f"Backend {backend.__class__.__name__} doesn't support create_table")
 
     @classmethod
     def create_table_sync(cls, connection: Optional[Any] = None, schemafull: bool = True) -> None:
         """Create the table for this document class synchronously."""
-        if connection is None:
-            from .connection import ConnectionRegistry
-            connection = ConnectionRegistry.get_default_connection()
-
-        collection_name = cls._get_collection_name()
-
-        # Create the table
-        schema_type = "SCHEMAFULL" if schemafull else "SCHEMALESS"
-        query = f"DEFINE TABLE {collection_name} {schema_type}"
-
-        # Check if this is a time series table
-        is_time_series = False
-        time_field = None
-
-        # Check if the Meta class has time_series and time_field attributes
-        if hasattr(cls, '_meta'):
-            is_time_series = cls._meta.get('time_series', False)
-            time_field = cls._meta.get('time_field')
-
-        # If time_series is True but time_field is not specified, try to find a TimeSeriesField
-        if is_time_series and not time_field:
-            for field_name, field in cls._fields.items():
-                if field.__class__.__name__ == 'TimeSeriesField':
-                    time_field = field.db_field
-                    break
-
-        # Add time series configuration if applicable
-        if is_time_series and time_field:
-            query += f" TYPE TIMESTAMP TIMEFIELD {time_field}"
-
-        # Add comment if available
-        if hasattr(cls, '__doc__') and cls.__doc__:
-            # Clean up docstring: remove newlines, extra spaces, and escape quotes
-            doc = ' '.join(cls.__doc__.strip().split())
-            doc = doc.replace("'", "''")
-            if doc:
-                query += f" COMMENT '{doc}'"
-        connection.client.query(query)
-
-        # Create fields if schemafull or if field is marked with define_schema=True
-        for field_name, field in cls._fields.items():
-            # Skip id field as it's handled by SurrealDB
-            if field_name == cls._meta.get('id_field', 'id'):
-                continue
-
-            # Only define fields if schemafull or if field is explicitly marked for schema definition
-            if schemafull or field.define_schema:
-                field_type = cls._get_field_type_for_surreal(field)
-                field_query = f"DEFINE FIELD {field.db_field} ON {collection_name} TYPE {field_type}"
-
-                # Add constraints
-                if field.required:
-                    field_query += " ASSERT $value != NONE"
-
-                # Add comment if available
-                if hasattr(field, '__doc__') and field.__doc__:
-                    # Clean up docstring: remove newlines, extra spaces, and escape quotes
-                    doc = ' '.join(field.__doc__.strip().split())
-                    doc = doc.replace("'", "''")
-                    if doc:
-                        field_query += f" COMMENT '{doc}'"
-
-                connection.client.query(field_query)
-
-                # Handle nested fields for DictField
-                if isinstance(field, DictField) and schemafull:
-                    if field.db_field == 'settings':
-                        nested_field_query = f"DEFINE FIELD {field.db_field}.theme ON {collection_name} TYPE string"
-                        connection.client.query(nested_field_query)
+        # Get the backend for this document
+        backend = cls._get_backend()
+        
+        # Delegate to backend-specific create_table method
+        if hasattr(backend, 'create_table'):
+            import asyncio
+            asyncio.run(backend.create_table(cls, schemafull=schemafull))
+        else:
+            # Fallback for backends without create_table method
+            raise NotImplementedError(f"Backend {backend.__class__.__name__} doesn't support create_table")
 
     @classmethod
     async def drop_table(cls, connection: Optional[Any] = None, if_exists: bool = True) -> None:

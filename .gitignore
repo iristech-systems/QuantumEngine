@@ -311,6 +311,7 @@ API_REFERENCE.md
 # Documentation build directory
 docs/_build/
 *.rst
+!docs/changelog.rst
 sphinx_build/
 
 # Enhancement suggestions and implementation notes
@@ -322,3 +323,6 @@ redis_backend.md
 MATERIALIZED_DOCUMENT_TESTS.md
 PYPI_READY_SUMMARY.md
 PYPI_SETUP_GUIDE.md
+
+# MCP Server implementations (separate projects)
+mcp-servers/
