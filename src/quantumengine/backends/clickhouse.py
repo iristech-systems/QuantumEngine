@@ -21,8 +21,18 @@ class ClickHouseBackend(BaseBackend):
             connection: ClickHouse client connection
         """
         super().__init__(connection)
-        # If connection is async, we'll need to handle it differently
-        self.client = connection
+    
+    def _initialize_client(self, connection: Any) -> Any:
+        """Initialize the ClickHouse client from the connection.
+        
+        Args:
+            connection: The connection object from ConnectionRegistry
+            
+        Returns:
+            The ClickHouse client object
+        """
+        # For ClickHouse, the connection IS the client
+        return connection
     
     async def create_table(self, document_class: Type, **kwargs) -> None:
         """Create a table for the document class with advanced ClickHouse features.
@@ -41,8 +51,17 @@ class ClickHouseBackend(BaseBackend):
         table_name = document_class._meta.get('table_name')
         meta = document_class._meta
         
-        # Get engine configuration from Meta or kwargs
-        engine = kwargs.get('engine', meta.get('engine', 'MergeTree'))
+        # Get engine configuration from Meta or kwargs - validate engine is specified
+        engine = kwargs.get('engine', meta.get('engine'))
+        
+        # Validate that engine is specified for ClickHouse tables
+        if not engine:
+            raise ValueError(
+                f"ClickHouse backend requires 'engine' to be specified in {document_class.__name__}.Meta class or kwargs. "
+                f"Example: engine = 'MergeTree' or engine = 'ReplacingMergeTree'. "
+                f"Available engines: MergeTree, ReplacingMergeTree, SummingMergeTree, AggregatingMergeTree, "
+                f"CollapsingMergeTree, VersionedCollapsingMergeTree, GraphiteMergeTree, Memory, Distributed"
+            )
         engine_params = kwargs.get('engine_params', meta.get('engine_params', []))
         order_by = kwargs.get('order_by', meta.get('order_by'))
         partition_by = kwargs.get('partition_by', meta.get('partition_by'))
@@ -54,18 +73,27 @@ class ClickHouseBackend(BaseBackend):
         if not order_by:
             order_by = self._determine_smart_order_by(document_class)
         
+        # Import field types for table creation
+        from ..fields.id import RecordIDField
+        
+        # Ensure id field is present for ClickHouse
+        fields_dict = dict(document_class._fields)
+        if 'id' not in fields_dict:
+            fields_dict['id'] = RecordIDField()
+        
         # Build column definitions
         columns = []
         materialized_columns = []
         
-        for field_name, field in document_class._fields.items():
+        for field_name, field in fields_dict.items():
             field_type = self.get_field_type(field)
             
             # Check for materialized columns
             if hasattr(field, 'materialized') and field.materialized:
                 columns.append(f"`{field_name}` {field_type} MATERIALIZED ({field.materialized})")
                 materialized_columns.append(field_name)
-            elif field.required and field_name not in materialized_columns:
+            elif (field.required or (field_name == 'id' and isinstance(field, RecordIDField))) and field_name not in materialized_columns:
+                # Treat id field as required for ClickHouse even if not explicitly marked as required
                 columns.append(f"`{field_name}` {field_type}")
             elif field_name not in materialized_columns:
                 # Handle special ClickHouse type restrictions
@@ -603,6 +631,7 @@ class ClickHouseBackend(BaseBackend):
             StringField, IntField, FloatField, BooleanField,
             DateTimeField, UUIDField, DictField, DecimalField
         )
+        from ..fields.id import RecordIDField
         from ..fields.clickhouse import (
             LowCardinalityField, FixedStringField, EnumField,
             CompressedStringField, CompressedLowCardinalityField
@@ -613,7 +642,9 @@ class ClickHouseBackend(BaseBackend):
             return field.get_clickhouse_type()
         
         # Handle standard fields
-        if isinstance(field, StringField):
+        if isinstance(field, RecordIDField):
+            return "String"  # Store record IDs as strings in ClickHouse
+        elif isinstance(field, StringField):
             if hasattr(field, 'max_length') and field.max_length:
                 return f"FixedString({field.max_length})"
             return "String"
@@ -725,6 +756,10 @@ class ClickHouseBackend(BaseBackend):
     
     def supports_bulk_operations(self) -> bool:
         """ClickHouse excels at bulk operations."""
+        return True
+    
+    def supports_materialized_views(self) -> bool:
+        """ClickHouse supports materialized views."""
         return True
     
     def get_optimized_methods(self) -> Dict[str, str]:

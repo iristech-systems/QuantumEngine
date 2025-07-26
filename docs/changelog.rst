@@ -8,32 +8,31 @@ The format is based on `Keep a Changelog`_, and this project adheres to `Semanti
 .. _Keep a Changelog: https://keepachangelog.com/en/1.0.0/
 .. _Semantic Versioning: https://semver.org/spec/v2.0.0.html
 
-[Unreleased]
-------------
+[0.2.0] - 2025-07-26
+--------------------
 
 Added
 ~~~~~
-- New features that have been added
+- **Redis/Dragonfly Backend Support**: Full implementation of Redis backend with complete CRUD operations
+- **Multi-Backend Connection Consistency**: Standardized ``auto_connect`` parameter across all backends
+- **Enhanced Field Serialization**: Improved handling of complex field types (ListField, DictField) across backends
+- **Backend-Aware Query System**: QuerySet now properly handles ID formatting for different backends
+- **RecordIDField**: New field type for ClickHouse to properly handle record IDs
+- **Docker Support**: Added Redis/Dragonfly to docker-compose.yml and docker-dev.sh
 
 Changed
 ~~~~~~~
-- Changes in existing functionality
-
-Deprecated
-~~~~~~~~~~
-- Features that will be removed in upcoming releases
-
-Removed
-~~~~~~~
-- Features that have been removed
+- **Connection API**: Unified ``create_connection()`` function now supports all backends with consistent parameters
+- **Backend Architecture**: Improved backend abstraction with standardized client initialization
+- **Field Deserialization**: Enhanced ``from_db`` methods to handle backend-specific data formats
 
 Fixed
 ~~~~~
-- Bug fixes
-
-Security
-~~~~~~~~
-- Security improvements
+- **SurrealDB Auto-Connect**: Fixed async connection task not being properly awaited
+- **ClickHouse Engine Validation**: Added helpful error messages when engine not specified in Meta class
+- **ClickHouse Complex Fields**: Fixed JSON deserialization for ListField and DictField
+- **Redis Document.get()**: Fixed ID format matching for document retrieval
+- **Query System ID Handling**: Fixed BaseQuerySet to properly format IDs based on backend type
 
 [0.1.3] - 2025-07-25
 --------------------

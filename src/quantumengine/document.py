@@ -1978,11 +1978,7 @@ class Document(metaclass=DocumentMetaclass):
         backend = cls._get_backend()
         
         # Delegate to backend-specific create_table method
-        if hasattr(backend, 'create_table'):
-            await backend.create_table(cls, schemafull=schemafull)
-        else:
-            # Fallback for backends without create_table method
-            raise NotImplementedError(f"Backend {backend.__class__.__name__} doesn't support create_table")
+        await backend.create_table(cls, schemafull=schemafull)
 
     @classmethod
     def create_table_sync(cls, connection: Optional[Any] = None, schemafull: bool = True) -> None:
@@ -1991,12 +1987,8 @@ class Document(metaclass=DocumentMetaclass):
         backend = cls._get_backend()
         
         # Delegate to backend-specific create_table method
-        if hasattr(backend, 'create_table'):
-            import asyncio
-            asyncio.run(backend.create_table(cls, schemafull=schemafull))
-        else:
-            # Fallback for backends without create_table method
-            raise NotImplementedError(f"Backend {backend.__class__.__name__} doesn't support create_table")
+        import asyncio
+        asyncio.run(backend.create_table(cls, schemafull=schemafull))
 
     @classmethod
     async def drop_table(cls, connection: Optional[Any] = None, if_exists: bool = True) -> None:
@@ -2030,15 +2022,7 @@ class Document(metaclass=DocumentMetaclass):
         
         # Use the backend's drop_table method synchronously
         import asyncio
-        if hasattr(connection.backend, 'drop_table'):
-            asyncio.run(connection.backend.drop_table(collection_name, if_exists=if_exists))
-        else:
-            # Fallback for older backends
-            if if_exists:
-                query = f"REMOVE TABLE IF EXISTS {collection_name}"
-            else:
-                query = f"REMOVE TABLE {collection_name}"
-            connection.client.query(query)
+        asyncio.run(connection.backend.drop_table(collection_name, if_exists=if_exists))
 
     @classmethod
     def to_dataclass(cls):

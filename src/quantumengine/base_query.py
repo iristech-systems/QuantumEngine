@@ -156,13 +156,19 @@ class BaseQuerySet:
                     # Handle full record ID format (collection:id)
                     self.query_parts.append((k, '=', v))
                 else:
-                    # Handle short ID format by prefixing with collection name
-                    collection = getattr(self, 'document_class', None)
-                    if collection:
-                        full_id = f"{collection._get_collection_name()}:{v}"
-                        self.query_parts.append((k, '=', full_id))
-                    else:
+                    # Handle short ID format - check backend type
+                    backend = getattr(self, 'backend', None)
+                    if backend and hasattr(backend, '__class__') and ('Redis' in backend.__class__.__name__ or 'ClickHouse' in backend.__class__.__name__):
+                        # For Redis and ClickHouse backends, use ID as-is (no collection prefix)
                         self.query_parts.append((k, '=', v))
+                    else:
+                        # For SurrealDB and other backends, prefix with collection name
+                        collection = getattr(self, 'document_class', None)
+                        if collection:
+                            full_id = f"{collection._get_collection_name()}:{v}"
+                            self.query_parts.append((k, '=', full_id))
+                        else:
+                            self.query_parts.append((k, '=', v))
                 continue
 
             parts = k.split('__')

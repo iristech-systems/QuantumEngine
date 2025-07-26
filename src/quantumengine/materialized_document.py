@@ -280,7 +280,7 @@ class MaterializedDocument(Document, metaclass=MaterializedDocumentMetaclass):
         else:
             backend = cls._get_backend()
         
-        if hasattr(backend, 'create_materialized_view'):
+        if backend.supports_materialized_views():
             await backend.create_materialized_view(cls)
         else:
             raise NotImplementedError(
@@ -292,7 +292,7 @@ class MaterializedDocument(Document, metaclass=MaterializedDocumentMetaclass):
         """Drop the materialized view from the database."""
         backend = cls._get_backend()
         
-        if hasattr(backend, 'drop_materialized_view'):
+        if backend.supports_materialized_views():
             await backend.drop_materialized_view(cls)
         else:
             raise NotImplementedError(
@@ -304,11 +304,13 @@ class MaterializedDocument(Document, metaclass=MaterializedDocumentMetaclass):
         """Refresh the materialized view (backend-specific behavior)."""
         backend = cls._get_backend()
         
-        if hasattr(backend, 'refresh_materialized_view'):
+        if backend.supports_materialized_views():
             await backend.refresh_materialized_view(cls)
         else:
-            # Some backends (like SurrealDB) auto-refresh
-            pass
+            # Backends that don't support materialized views can't refresh them
+            raise NotImplementedError(
+                f"Backend {backend.__class__.__name__} doesn't support materialized views"
+            )
     
     @classmethod
     def _build_source_query(cls) -> str:

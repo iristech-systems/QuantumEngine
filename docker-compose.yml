@@ -59,6 +59,23 @@ services:
       # Use in-memory storage for development to avoid permission issues
       - SURREAL_LOG=info
 
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: quantumengine-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --appendfsync everysec
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
 volumes:
   clickhouse-data:
     driver: local
@@ -67,6 +84,8 @@ volumes:
   clickhouse-keeper:
     driver: local
   surrealdb-data:
+    driver: local
+  redis-data:
     driver: local
 
 networks:

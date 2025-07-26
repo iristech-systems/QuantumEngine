@@ -1702,6 +1702,17 @@ class SurrealEngineAsyncConnection:
         """
         return SurrealEngine(self)
 
+    async def _ensure_connected(self) -> None:
+        """Ensure connection is established, handling auto-connect task if present."""
+        # If there's a pending auto-connect task, await it first
+        if hasattr(self, '_auto_connect_task') and self._auto_connect_task:
+            await self._auto_connect_task
+            self._auto_connect_task = None
+        
+        # If still not connected, connect now
+        if not self.client:
+            await self.connect()
+
     async def connect(self) -> Any:
         """Connect to the database.
 
@@ -1888,12 +1899,25 @@ def create_connection(url: Optional[str] = None, namespace: Optional[str] = None
                 ConnectionRegistry.register(default_name, connection, backend)
                 ConnectionRegistry.set_default(backend, default_name)
 
-        # Auto-connect if requested
+        # Auto-connect if requested - make SurrealDB consistent with other backends
         if auto_connect:
             if async_mode:
-                # We can't await here, so we'll return the connection without connecting
-                # The caller will need to await connection.connect() before using it
-                pass
+                # For async SurrealDB, we need to connect immediately
+                import asyncio
+                try:
+                    # Try to connect immediately in the current async context
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        # Create a task and wait for it to complete
+                        task = asyncio.create_task(connection.connect())
+                        # Note: This will be awaited when the connection is first used
+                        connection._auto_connect_task = task
+                    else:
+                        # If no event loop is running, connect will happen on first use
+                        pass
+                except Exception:
+                    # If we can't get the event loop, connect will happen on first use
+                    pass
             else:
                 connection.connect()
 
@@ -1963,9 +1987,55 @@ def create_connection(url: Optional[str] = None, namespace: Optional[str] = None
             else:
                 raise ValueError(error_msg)
         
-        # For future backends, we would create the connection here
-        # For now, raise an error for unsupported backends
-        raise ValueError(f"Backend '{backend}' found but connection creation not yet implemented")
+        # Backend-specific connection creation
+        if backend == 'redis':
+            try:
+                import redis
+            except ImportError:
+                raise ImportError("Redis backend requires 'redis'. Install with: pip install quantumengine[redis]")
+            
+            # Build Redis connection parameters
+            redis_params = {
+                'host': url or 'localhost',
+                'port': backend_kwargs.get('port', 6379),
+                'db': backend_kwargs.get('db', 0),
+                'decode_responses': backend_kwargs.get('decode_responses', True),
+                **{k: v for k, v in backend_kwargs.items() if k not in ['port', 'db', 'decode_responses']}
+            }
+            
+            # Add auth if provided
+            if password:
+                redis_params['password'] = password
+            if username:
+                redis_params['username'] = username
+            
+            # Create Redis client
+            connection = redis.Redis(**redis_params)
+            
+            # Test connection
+            try:
+                connection.ping()
+            except Exception as e:
+                raise ConnectionError(f"Failed to connect to Redis: {e}")
+            
+            # Register in ConnectionRegistry
+            if name:
+                ConnectionRegistry.register(name, connection, backend)
+            if make_default or name is None:
+                if name:
+                    ConnectionRegistry.set_default(backend, name)
+                else:
+                    # Create a default name
+                    default_name = f'{backend}_default'
+                    ConnectionRegistry.register(default_name, connection, backend)
+                    ConnectionRegistry.set_default(backend, default_name)
+            
+            return connection
+            
+        else:
+            # For future backends, we would create the connection here
+            # For now, raise an error for unsupported backends
+            raise ValueError(f"Backend '{backend}' found but connection creation not yet implemented")
 
 
 class SurrealEngineSyncConnection:

@@ -93,6 +93,7 @@ from .base import BaseBackend
 _BACKEND_INSTALL_INSTRUCTIONS = {
     'clickhouse': "pip install quantumengine[clickhouse]",
     'surrealdb': "pip install quantumengine[surrealdb]",
+    'redis': "pip install quantumengine[redis]",
 }
 
 def _register_backends():
@@ -123,6 +124,19 @@ def _register_backends():
             f"Install it with: {install_cmd}"
         )
         BackendRegistry.register_error('surrealdb', error_msg)
+    
+    # Try to register Redis backend
+    try:
+        import redis  # Check for required dependency
+        from .redis import RedisBackend
+        BackendRegistry.register('redis', RedisBackend)
+    except ImportError as e:
+        install_cmd = _BACKEND_INSTALL_INSTRUCTIONS.get('redis', 'pip install redis')
+        error_msg = (
+            f"Redis backend requires the 'redis' package. "
+            f"Install it with: {install_cmd}"
+        )
+        BackendRegistry.register_error('redis', error_msg)
 
 # Register backends on import
 _register_backends()

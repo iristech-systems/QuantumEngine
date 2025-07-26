@@ -326,3 +326,8 @@ PYPI_SETUP_GUIDE.md
 
 # MCP Server implementations (separate projects)
 mcp-servers/
+
+# Private development and analysis files
+backend_consistency_fixes_summary.md
+critical_work_needed.md
+redis_custom_enhancement.md

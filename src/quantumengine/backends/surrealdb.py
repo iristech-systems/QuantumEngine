@@ -15,6 +15,31 @@ class SurrealDBBackend(BaseBackend):
     providing all the core database operations using SurrealQL.
     """
     
+    def _initialize_client(self, connection: Any) -> Any:
+        """Initialize the SurrealDB client from the connection.
+        
+        Args:
+            connection: The connection object from ConnectionRegistry
+            
+        Returns:
+            The SurrealDB client object
+        """
+        # For SurrealDB, the connection has a .client attribute
+        return connection.client
+    
+    async def _get_client(self) -> Any:
+        """Get the client, ensuring connection is established first."""
+        # Ensure connection is established before accessing client
+        if hasattr(self.connection, '_ensure_connected'):
+            await self.connection._ensure_connected()
+        elif hasattr(self.connection, 'connect') and not self.connection.client:
+            if hasattr(self.connection.connect, '__await__'):  # async connect
+                await self.connection.connect()
+            else:  # sync connect
+                self.connection.connect()
+        
+        return self.connection.client
+    
     def __init__(self, connection: Any) -> None:
         """Initialize the SurrealDB backend.
         
@@ -22,7 +47,6 @@ class SurrealDBBackend(BaseBackend):
             connection: SurrealEngine connection (async or sync)
         """
         super().__init__(connection)
-        self.client = connection.client
         self.is_async = hasattr(connection, 'client') and hasattr(connection.client, 'create')
     
     async def create_table(self, document_class: Type, **kwargs) -> None:
@@ -111,16 +135,19 @@ class SurrealDBBackend(BaseBackend):
             
             # Try CREATE first (for new records), fallback to UPDATE if it exists
             try:
-                result = await self.client.create(record_id, formatted_data)
+                client = await self._get_client()
+                result = await client.create(record_id, formatted_data)
             except Exception as e:
                 if 'already exists' in str(e):
                     # Record exists, use UPDATE instead
-                    result = await self.client.update(record_id, formatted_data)
+                    client = await self._get_client()
+                    result = await client.update(record_id, formatted_data)
                 else:
                     raise e
         else:
             # Use CREATE without ID (auto-generate)
-            result = await self.client.create(table_name, formatted_data)
+            client = await self._get_client()
+            result = await client.create(table_name, formatted_data)
 
 
         if result:
@@ -160,7 +187,8 @@ class SurrealDBBackend(BaseBackend):
         
         # Insert documents without IDs (bulk create)
         if docs_without_id:
-            batch_results = await self.client.insert(table_name, docs_without_id)
+            client = await self._get_client()
+            batch_results = await client.insert(table_name, docs_without_id)
             if batch_results:
                 results.extend([self._format_result_data(r) for r in batch_results])
         
@@ -173,7 +201,8 @@ class SurrealDBBackend(BaseBackend):
                 else:
                     record_id = RecordID(table_name, record_id)
             
-            result = await self.client.create(record_id, doc)
+            client = await self._get_client()
+            result = await client.create(record_id, doc)
             if result and len(result) > 0:
                 results.append(self._format_result_data(result[0]))
         
@@ -513,7 +542,7 @@ class SurrealDBBackend(BaseBackend):
         """
         # SurrealDB doesn't have explicit transaction syntax like BEGIN
         # Transactions are implicit within query batches
-        return self.client
+        return await self._get_client()
     
     async def commit_transaction(self, transaction: Any) -> None:
         """Commit a transaction.
@@ -565,6 +594,10 @@ class SurrealDBBackend(BaseBackend):
     
     def supports_bulk_operations(self) -> bool:
         """SurrealDB supports bulk operations."""
+        return True
+    
+    def supports_materialized_views(self) -> bool:
+        """SurrealDB supports materialized views."""
         return True
     
     def get_optimized_methods(self) -> Dict[str, str]:
@@ -678,11 +711,13 @@ class SurrealDBBackend(BaseBackend):
     
     async def _execute(self, query: str) -> None:
         """Execute a query without returning results."""
-        await self.client.query(query)
+        client = await self._get_client()
+        await client.query(query)
     
     async def _query(self, query: str) -> Any:
         """Execute a query and return results."""
-        return await self.client.query(query)
+        client = await self._get_client()
+        return await client.query(query)
     
     def _format_document_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Format document data for SurrealDB storage."""

@@ -47,6 +47,9 @@ start_services() {
     elif [ "$1" = "surrealdb" ]; then
         print_status "Starting SurrealDB only..."
         docker-compose up -d surrealdb
+    elif [ "$1" = "redis" ]; then
+        print_status "Starting Redis only..."
+        docker-compose up -d redis
     else
         print_status "Starting all services..."
         docker-compose up -d
@@ -100,6 +103,17 @@ check_services() {
     else
         print_warning "SurrealDB: Not running"
     fi
+    
+    # Check Redis
+    if docker-compose ps redis | grep -q "Up"; then
+        if docker-compose exec -T redis redis-cli ping > /dev/null 2>&1; then
+            print_status "Redis: ✓ Running and accessible at localhost:6379"
+        else
+            print_warning "Redis: Container running but not accessible"
+        fi
+    else
+        print_warning "Redis: Not running"
+    fi
 }
 
 # Function to show logs
@@ -140,6 +154,19 @@ connect_clickhouse() {
     docker-compose exec clickhouse clickhouse-client
 }
 
+# Function to connect to Redis
+connect_redis() {
+    print_header "Connecting to Redis"
+    
+    if ! docker-compose ps redis | grep -q "Up"; then
+        print_error "Redis is not running. Start it with: ./docker-dev.sh start redis"
+        exit 1
+    fi
+    
+    print_status "Connecting to Redis CLI..."
+    docker-compose exec redis redis-cli
+}
+
 # Function to clean up
 cleanup() {
     print_header "Cleaning Up QuantumORM Development Environment"
@@ -164,22 +191,25 @@ QuantumORM Development Environment Manager
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    start [service]    Start services (clickhouse, surrealdb, or all)
+    start [service]    Start services (clickhouse, surrealdb, redis, or all)
     stop              Stop all services
     restart           Restart all services
     status            Check service status
     logs [service]    Show logs (for specific service or all)
     test              Run ClickHouse backend tests
     clickhouse        Connect to ClickHouse client
+    redis             Connect to Redis CLI
     cleanup           Remove all containers and volumes
     help              Show this help
 
 Examples:
     $0 start              # Start all services
     $0 start clickhouse   # Start only ClickHouse
-    $0 logs clickhouse    # Show ClickHouse logs
+    $0 start redis        # Start only Redis
+    $0 logs redis         # Show Redis logs
     $0 test               # Run backend tests
     $0 clickhouse         # Connect to ClickHouse
+    $0 redis              # Connect to Redis CLI
 
 EOF
 }
@@ -206,6 +236,9 @@ case "$1" in
         ;;
     clickhouse)
         connect_clickhouse
+        ;;
+    redis)
+        connect_redis
         ;;
     cleanup)
         cleanup

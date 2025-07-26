@@ -17,6 +17,23 @@ class BaseBackend(ABC):
             connection: The database connection object
         """
         self.connection = connection
+        # Standardized client access - backends override _initialize_client()
+        self.client = self._initialize_client(connection)
+    
+    def _initialize_client(self, connection: Any) -> Any:
+        """Initialize the client from the connection.
+        
+        This method should be overridden by backends to handle their specific
+        connection patterns consistently.
+        
+        Args:
+            connection: The connection object from ConnectionRegistry
+            
+        Returns:
+            The actual client object to use for database operations
+        """
+        # Default implementation - assume connection is the client
+        return connection
     
     @abstractmethod
     async def create_table(self, document_class: Type, **kwargs) -> None:
@@ -271,6 +288,14 @@ class BaseBackend(ABC):
         """
         return False
     
+    def supports_materialized_views(self) -> bool:
+        """Check if the backend supports materialized views.
+        
+        Returns:
+            True if materialized views are supported, False otherwise
+        """
+        return False
+    
     def get_optimized_methods(self) -> Dict[str, str]:
         """Get backend-specific optimization methods.
         
@@ -305,6 +330,7 @@ class BaseBackend(ABC):
             'indexes': self.supports_indexes(),
             'full_text_search': self.supports_full_text_search(),
             'bulk_operations': self.supports_bulk_operations(),
+            'materialized_views': self.supports_materialized_views(),
         }
     
     # Graph/Relation methods (optional - not all backends support these)

@@ -83,20 +83,36 @@ class ListField(Field):
             return value
         return value
 
-    def from_db(self, value: Optional[List[Any]]) -> Optional[List[Any]]:
+    def from_db(self, value: Optional[List[Any]], backend: Optional[str] = None) -> Optional[List[Any]]:
         """Convert database list to Python representation.
 
         This method converts a database list to a Python representation by
-        converting each item using the field_type if provided.
+        converting each item using the field_type if provided. For ClickHouse,
+        JSON strings are parsed back to Python lists.
 
         Args:
             value: The database list to convert
+            backend: The backend name for backend-specific deserialization
 
         Returns:
             The Python representation of the list
         """
-        if value is not None and self.field_type:
-            return [self.field_type.from_db(item) for item in value]
+        if value is not None:
+            # For ClickHouse backend, parse JSON string back to list
+            if backend == 'clickhouse' and isinstance(value, str):
+                import json
+                try:
+                    value = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # If JSON parsing fails, return the original value
+                    pass
+            
+            # Convert items using field_type if specified
+            if self.field_type and isinstance(value, list):
+                if 'backend' in self.field_type.from_db.__code__.co_varnames:
+                    return [self.field_type.from_db(item, backend=backend) for item in value]
+                else:
+                    return [self.field_type.from_db(item) for item in value]
         return value
 
 
@@ -181,20 +197,36 @@ class DictField(Field):
             return value
         return value
 
-    def from_db(self, value: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def from_db(self, value: Optional[Dict[str, Any]], backend: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Convert database dictionary to Python representation.
 
         This method converts a database dictionary to a Python representation by
-        converting each value using the field_type if provided.
+        converting each value using the field_type if provided. For ClickHouse,
+        JSON strings are parsed back to Python dictionaries.
 
         Args:
             value: The database dictionary to convert
+            backend: The backend name for backend-specific deserialization
 
         Returns:
             The Python representation of the dictionary
         """
-        if value is not None and self.field_type and isinstance(self.field_type, Field):
-            return {key: self.field_type.from_db(item) for key, item in value.items()}
+        if value is not None:
+            # For ClickHouse backend, parse JSON string back to dict
+            if backend == 'clickhouse' and isinstance(value, str):
+                import json
+                try:
+                    value = json.loads(value)
+                except (json.JSONDecodeError, TypeError):
+                    # If JSON parsing fails, return the original value
+                    pass
+            
+            # Convert values using field_type if specified
+            if self.field_type and isinstance(self.field_type, Field) and isinstance(value, dict):
+                if 'backend' in self.field_type.from_db.__code__.co_varnames:
+                    return {key: self.field_type.from_db(item, backend=backend) for key, item in value.items()}
+                else:
+                    return {key: self.field_type.from_db(item) for key, item in value.items()}
         return value
 
 
