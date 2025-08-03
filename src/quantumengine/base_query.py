@@ -72,10 +72,16 @@ class BaseQuerySet:
         SurrealEngineAsyncConnection, SurrealEngineSyncConnection = _get_connection_classes()
         return isinstance(self.connection, SurrealEngineAsyncConnection)
 
-    def filter(self, query=None, **kwargs) -> 'BaseQuerySet':
+    def filter(self, *expressions, query=None, **kwargs) -> 'BaseQuerySet':
         """Add filter conditions to the query with automatic ID optimization.
 
-        This method supports both Q objects and Django-style field lookups with double-underscore operators:
+        This method supports multiple query syntaxes:
+        1. Pythonic expressions: filter(User.age > 18, User.active == True)
+        2. Django-style kwargs: filter(age__gt=18, active=True)
+        3. Q objects: filter(Q(age__gt=18) & Q(active=True))
+        4. Mixed: filter(User.age > 18, active=True)
+
+        Django-style field lookups with double-underscore operators:
         - field__gt: Greater than
         - field__lt: Less than
         - field__gte: Greater than or equal
@@ -102,6 +108,46 @@ class BaseQuerySet:
         Raises:
             ValueError: If an unknown operator is provided
         """
+        # Process Pythonic expressions and Q objects first
+        for expr in expressions:
+            # Import here to avoid circular imports
+            try:
+                from .query_expressions import Q, QueryExpression
+                from .query_expressions_pythonic import FieldExpression, CompoundExpression, is_pythonic_expression
+                
+                # Check for Q objects in expressions (for backward compatibility)
+                if isinstance(expr, Q):
+                    where_clause = expr.to_where_clause()
+                    if where_clause:
+                        self.query_parts.append(('__raw__', '=', where_clause))
+                
+                elif isinstance(expr, FieldExpression):
+                    # Convert to internal query condition
+                    condition = expr.to_query_condition()
+                    self.query_parts.append(condition)
+                    
+                elif isinstance(expr, CompoundExpression):
+                    # Convert compound expression to Q object and use its WHERE clause
+                    q_obj = expr.to_q_object()
+                    where_clause = q_obj.to_where_clause()
+                    if where_clause:
+                        self.query_parts.append(('__raw__', '=', where_clause))
+                            
+                elif is_pythonic_expression(expr):
+                    # Generic check for any pythonic expression
+                    if hasattr(expr, 'to_query_condition'):
+                        condition = expr.to_query_condition()
+                        self.query_parts.append(condition)
+                    elif hasattr(expr, 'to_q_object'):
+                        q_obj = expr.to_q_object()
+                        where_clause = q_obj.to_where_clause()
+                        if where_clause:
+                            self.query_parts.append(('__raw__', '=', where_clause))
+                                
+            except ImportError:
+                # If expressions not available, skip
+                pass
+        
         # Handle Q objects and QueryExpressions
         if query is not None:
             # Import here to avoid circular imports
@@ -109,14 +155,10 @@ class BaseQuerySet:
                 from .query_expressions import Q, QueryExpression
                 
                 if isinstance(query, Q):
-                    # Convert Q object to conditions
-                    conditions = query.to_conditions()
-                    for field, op, value in conditions:
-                        if field == '__raw__':
-                            # Handle raw query conditions
-                            self.query_parts.append(('__raw__', '=', value))
-                        else:
-                            self.query_parts.append((field, op, value))
+                    # Use Q object's WHERE clause directly to preserve OR/AND logic
+                    where_clause = query.to_where_clause()
+                    if where_clause:
+                        self.query_parts.append(('__raw__', '=', where_clause))
                     return self
                 
                 elif isinstance(query, QueryExpression):
@@ -413,6 +455,7 @@ class BaseQuerySet:
             # Handle raw query conditions
             if field == '__raw__':
                 conditions.append(value)
+                continue
             # Handle special cases
             elif op == '=' and isinstance(field, str) and '::' in field:
                 conditions.append(f"{field}")

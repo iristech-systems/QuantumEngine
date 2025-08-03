@@ -96,8 +96,8 @@ class DocumentMetaclass(type):
                 if not attr_value.db_field:
                     attr_value.db_field = attr_name
 
-                # Remove the field from attrs so it doesn't become a class attribute
-                del attrs[attr_name]
+                # Keep the field in attrs so it can work as a descriptor
+                # del attrs[attr_name]  # Commented out to enable Pythonic query syntax
 
         attrs['_fields'] = fields
         attrs['_fields_ordered'] = fields_ordered

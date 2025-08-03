@@ -11,6 +11,7 @@ from ..signals import (
     pre_from_db, post_from_db, SIGNAL_SUPPORT
 )
 import json
+from ..query_expressions_pythonic import QueryableFieldProxy
 
 # Type variable for field types
 T = TypeVar('T')
@@ -180,3 +181,40 @@ class Field(Generic[T]):
             The Python representation of the value
         """
         return cast(T, value)
+    
+    def __get__(self, instance: Any, owner: Type) -> Union[Any, QueryableFieldProxy]:
+        """Field descriptor implementation for Pythonic query syntax.
+        
+        When accessed on the class (e.g., User.age), returns a QueryableFieldProxy
+        that supports query operators. When accessed on an instance, returns the
+        field value.
+        
+        Args:
+            instance: The instance the field is accessed from (None for class access)
+            owner: The class that owns this field
+            
+        Returns:
+            QueryableFieldProxy for class access, field value for instance access
+        """
+        if instance is None:
+            # Class-level access: return queryable proxy for query building
+            return QueryableFieldProxy(self, self.name or '')
+        else:
+            # Instance-level access: return the actual value
+            return instance._data.get(self.name, self.default)
+    
+    def __set__(self, instance: Any, value: Any) -> None:
+        """Set the field value on an instance.
+        
+        Args:
+            instance: The instance to set the value on
+            value: The value to set
+        """
+        if hasattr(instance, '__setattr__'):
+            # Use the document's __setattr__ to ensure proper tracking
+            instance.__setattr__(self.name, value)
+        else:
+            # Fallback for direct field assignment
+            instance._data[self.name] = value
+            if self.name not in instance._changed_fields:
+                instance._changed_fields.append(self.name)

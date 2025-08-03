@@ -39,7 +39,7 @@ class QuerySetDescriptor:
         self.connection = None
         return self
 
-    async def __call__(self, query=None, limit: Optional[int] = None, start: Optional[int] = None,
+    async def __call__(self, *expressions, query=None, limit: Optional[int] = None, start: Optional[int] = None,
                        page: Optional[tuple] = None, **kwargs: Any) -> List[Any]:
         """Allow direct filtering through call syntax asynchronously.
 
@@ -47,7 +47,14 @@ class QuerySetDescriptor:
         to query the document class. It supports pagination through limit and start parameters
         or the page parameter.
 
+        Supports multiple syntax styles:
+        1. Pythonic expressions: objects(User.age > 18, User.active == True)
+        2. Django-style kwargs: objects(age__gt=18, active=True)
+        3. Q objects: objects(Q(age__gt=18) & Q(active=True))
+        4. Mixed: objects(User.age > 18, active=True)
+
         Args:
+            *expressions: Pythonic query expressions
             query: Q object or QueryExpression for complex queries
             limit: Maximum number of results to return (for pagination)
             start: Number of results to skip (for pagination)
@@ -60,9 +67,13 @@ class QuerySetDescriptor:
         # Use None as connection - QuerySet will determine the correct backend
         queryset = QuerySet(self.owner, None)
         
+        # Apply Pythonic expressions if provided
+        if expressions:
+            queryset = queryset.filter(*expressions)
+        
         # Apply query object if provided
         if query is not None:
-            queryset = queryset.filter(query)
+            queryset = queryset.filter(query=query)
         
         # Apply filters and pagination
         if kwargs:
@@ -80,7 +91,7 @@ class QuerySetDescriptor:
         # Return results
         return await queryset.all()
 
-    def call_sync(self, query=None, limit: Optional[int] = None, start: Optional[int] = None,
+    def call_sync(self, *expressions, query=None, limit: Optional[int] = None, start: Optional[int] = None,
                   page: Optional[tuple] = None, **kwargs: Any) -> List[Any]:
         """Allow direct filtering through call syntax synchronously.
 
@@ -88,7 +99,14 @@ class QuerySetDescriptor:
         to query the document class. It supports pagination through limit and start parameters
         or the page parameter.
 
+        Supports multiple syntax styles:
+        1. Pythonic expressions: objects(User.age > 18, User.active == True)
+        2. Django-style kwargs: objects(age__gt=18, active=True)
+        3. Q objects: objects(Q(age__gt=18) & Q(active=True))
+        4. Mixed: objects(User.age > 18, active=True)
+
         Args:
+            *expressions: Pythonic query expressions
             query: Q object or QueryExpression for complex queries
             limit: Maximum number of results to return (for pagination)
             start: Number of results to skip (for pagination)
@@ -101,9 +119,13 @@ class QuerySetDescriptor:
         # Use None as connection - QuerySet will determine the correct backend
         queryset = QuerySet(self.owner, None)
         
+        # Apply Pythonic expressions if provided
+        if expressions:
+            queryset = queryset.filter(*expressions)
+        
         # Apply query object if provided
         if query is not None:
-            queryset = queryset.filter(query)
+            queryset = queryset.filter(query=query)
         
         # Apply filters and pagination
         if kwargs:
@@ -159,13 +181,20 @@ class QuerySetDescriptor:
         queryset = QuerySet(self.owner, None)
         return queryset.get_sync(**kwargs)
 
-    def filter(self, query=None, **kwargs: Any) -> QuerySet:
+    def filter(self, *expressions, query=None, **kwargs: Any) -> QuerySet:
         """Create a QuerySet with filters using the document's configured backend.
 
         This method creates a new QuerySet with the given filters using the backend
         configured for the document class.
 
+        Supports multiple syntax styles:
+        1. Pythonic expressions: filter(User.age > 18, User.active == True)
+        2. Django-style kwargs: filter(age__gt=18, active=True)
+        3. Q objects: filter(Q(age__gt=18) & Q(active=True))
+        4. Mixed: filter(User.age > 18, active=True)
+
         Args:
+            *expressions: Pythonic query expressions
             query: Q object or QueryExpression for complex queries
             **kwargs: Field names and values to filter by
 
@@ -174,14 +203,21 @@ class QuerySetDescriptor:
         """
         # Use None as connection - QuerySet will determine the correct backend
         queryset = QuerySet(self.owner, None)
-        return queryset.filter(query=query, **kwargs)
+        return queryset.filter(*expressions, query=query, **kwargs)
 
-    def filter_sync(self, query=None, **kwargs: Any) -> QuerySet:
+    def filter_sync(self, *expressions, query=None, **kwargs: Any) -> QuerySet:
         """Create a QuerySet with filters using the default sync connection.
 
         This method creates a new QuerySet with the given filters using the default sync connection.
 
+        Supports multiple syntax styles:
+        1. Pythonic expressions: filter(User.age > 18, User.active == True)
+        2. Django-style kwargs: filter(age__gt=18, active=True)
+        3. Q objects: filter(Q(age__gt=18) & Q(active=True))
+        4. Mixed: filter(User.age > 18, active=True)
+
         Args:
+            *expressions: Pythonic query expressions
             query: Q object or QueryExpression for complex queries
             **kwargs: Field names and values to filter by
 
@@ -190,7 +226,7 @@ class QuerySetDescriptor:
         """
         # Use None as connection - QuerySet will determine the correct backend
         queryset = QuerySet(self.owner, None)
-        return queryset.filter(query=query, **kwargs)
+        return queryset.filter(*expressions, query=query, **kwargs)
 
     def limit(self, value: int) -> QuerySet:
         """Set the maximum number of results to return.

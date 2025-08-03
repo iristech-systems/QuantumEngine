@@ -153,21 +153,21 @@ class Q:
                 # Handle special operators
                 if op in ('CONTAINS', 'STARTSWITH', 'ENDSWITH'):
                     if op == 'CONTAINS':
-                        condition_strs.append(f"string::contains({field}, '{value}')")
+                        condition_strs.append(f"string::contains({field}, {json.dumps(value)})")
                     elif op == 'STARTSWITH':
-                        condition_strs.append(f"string::starts_with({field}, '{value}')")
+                        condition_strs.append(f"string::starts_with({field}, {json.dumps(value)})")
                     elif op == 'ENDSWITH':
-                        condition_strs.append(f"string::ends_with({field}, '{value}')")
+                        condition_strs.append(f"string::ends_with({field}, {json.dumps(value)})")
                 elif op == 'REGEX':
-                    condition_strs.append(f"string::matches({field}, r'{value}')")
+                    condition_strs.append(f"string::matches({field}, r{json.dumps(value)})")
                 elif op in ('INSIDE', 'NOT INSIDE'):
                     value_str = json.dumps(value)
                     condition_strs.append(f"{field} {op} {value_str}")
                 else:
                     # Regular operators
                     if isinstance(value, str) and not (isinstance(value, str) and ':' in value):
-                        # Quote string values
-                        condition_strs.append(f"{field} {op} '{value}'")
+                        # Quote string values using JSON format for consistency
+                        condition_strs.append(f"{field} {op} {json.dumps(value)}")
                     else:
                         # Don't quote numbers, booleans, or record IDs
                         condition_strs.append(f"{field} {op} {json.dumps(value)}")
