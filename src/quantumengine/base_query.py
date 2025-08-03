@@ -236,16 +236,16 @@ class BaseQuerySet:
                     self.query_parts.append((field, 'NOT INSIDE', v))
                 elif op == 'contains':
                     # Delegate to backend-specific condition building
-                    self.query_parts.append((field, 'contains', v))
+                    self.query_parts.append((field, 'CONTAINS', v))
                 elif op == 'startswith':
                     # Delegate to backend-specific condition building
-                    self.query_parts.append((field, 'startswith', v))
+                    self.query_parts.append((field, 'STARTSWITH', v))
                 elif op == 'endswith':
                     # Delegate to backend-specific condition building
-                    self.query_parts.append((field, 'endswith', v))
+                    self.query_parts.append((field, 'ENDSWITH', v))
                 elif op == 'regex':
                     # Delegate to backend-specific condition building
-                    self.query_parts.append((field, 'regex', v))
+                    self.query_parts.append((field, 'REGEX', v))
                 else:
                     # Handle nested field access for DictFields
                     document_class = getattr(self, 'document_class', None)

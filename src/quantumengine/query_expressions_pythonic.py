@@ -84,10 +84,10 @@ class FieldExpression:
             '!=': '!=',
             'in': 'INSIDE',
             'not in': 'NOT INSIDE',
-            'contains': 'contains',
-            'startswith': 'startswith',
-            'endswith': 'endswith',
-            'regex': 'regex',
+            'contains': 'CONTAINS',
+            'startswith': 'STARTSWITH',
+            'endswith': 'ENDSWITH',
+            'regex': 'REGEX',
         }
         
         internal_op = op_map.get(self.operator, '=')

@@ -448,6 +448,18 @@ class SurrealDBBackend(BaseBackend):
             return f"{field} CONTAINSANY {formatted_value}"
         elif operator == 'containsnone':
             return f"{field} CONTAINSNONE {formatted_value}"
+        elif operator == 'CONTAINS':
+            # String contains operation
+            if isinstance(value, str):
+                return f"string::contains({field}, {formatted_value})"
+            else:
+                return f"{field} CONTAINS {formatted_value}"
+        elif operator == 'STARTSWITH':
+            return f"string::starts_with({field}, {formatted_value})"
+        elif operator == 'ENDSWITH':
+            return f"string::ends_with({field}, {formatted_value})"
+        elif operator == 'REGEX':
+            return f"{field} ~ {formatted_value}"
         elif operator == '~':
             return f"{field} ~ {formatted_value}"
         elif operator == '!~':
