@@ -342,25 +342,65 @@ class SurrealDBBackend(BaseBackend):
         # Format update data
         formatted_data = self._format_document_data(data)
         
-        # Build UPDATE query
-        query = f"UPDATE {table_name}"
-        
-        if conditions:
-            query += f" WHERE {' AND '.join(conditions)}"
-        
-        # Add SET clause
+        # Build SET clause
         set_parts = []
         for key, value in formatted_data.items():
             set_parts.append(f"{key} = {self.format_value(value)}")
         
-        if set_parts:
-            query += f" SET {', '.join(set_parts)}"
+        if not set_parts:
+            return []
+        
+        # Check if we have a simple id condition that we can use for direct record update
+        record_id = self._extract_record_id_from_conditions(conditions)
+        
+        if record_id:
+            # Use direct record identifier syntax: UPDATE table:record_id SET ...
+            query = f"UPDATE {table_name}:{record_id} SET {', '.join(set_parts)}"
+        else:
+            # Fall back to WHERE clause syntax
+            query = f"UPDATE {table_name} SET {', '.join(set_parts)}"
+            if conditions:
+                query += f" WHERE {' AND '.join(conditions)}"
         
         result = await self._query(query)
         
         if result and len(result) > 0:
             return [self._format_result_data(doc) for doc in result[0]]
         return []
+    
+    def _extract_record_id_from_conditions(self, conditions: List[str]) -> Optional[str]:
+        """Extract record ID from conditions if there's a simple id = value condition.
+        
+        Args:
+            conditions: List of condition strings
+            
+        Returns:
+            Record ID if found, None otherwise
+        """
+        if not conditions or len(conditions) != 1:
+            return None
+        
+        condition = conditions[0].strip()
+        
+        # Look for patterns like "id = 'value'" or "id = value"
+        if condition.startswith('id = '):
+            value_part = condition[5:].strip()
+            # Remove quotes if present
+            if value_part.startswith("'") and value_part.endswith("'"):
+                record_id = value_part[1:-1]
+            elif value_part.startswith('"') and value_part.endswith('"'):
+                record_id = value_part[1:-1]
+            else:
+                record_id = value_part
+            
+            # If record_id already contains table:id format, extract just the ID part
+            if ':' in record_id:
+                parts = record_id.split(':', 1)
+                return parts[1]  # Return just the ID part
+            else:
+                return record_id
+        
+        return None
     
     async def delete(self, table_name: str, conditions: List[str]) -> int:
         """Delete documents matching conditions.

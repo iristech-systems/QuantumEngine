@@ -52,11 +52,13 @@ class SchemalessQuerySet(BaseQuerySet):
         from .document import Document  # Import at the top of the file
         doc_class = None
 
-        # Find matching document class
-        for cls in Document.__subclasses__():
-            if hasattr(cls, '_meta') and cls._meta.get('collection') == self.table_name:
-                doc_class = cls
-                break
+        # Find matching document class using isinstance checks to avoid TypeError
+        import inspect
+        for name, obj in inspect.getmembers(inspect.getmodule(Document)):
+            if inspect.isclass(obj) and issubclass(obj, Document) and obj is not Document:
+                if hasattr(obj, '_meta') and obj._meta.get('collection') == self.table_name:
+                    doc_class = obj
+                    break
 
         # Process results based on whether we found a matching document class
         processed_results = []
@@ -99,11 +101,13 @@ class SchemalessQuerySet(BaseQuerySet):
         from .document import Document  # Import at the top of the file
         doc_class = None
 
-        # Find matching document class
-        for cls in Document.__subclasses__():
-            if hasattr(cls, '_meta') and cls._meta.get('collection') == self.table_name:
-                doc_class = cls
-                break
+        # Find matching document class using isinstance checks to avoid TypeError
+        import inspect
+        for name, obj in inspect.getmembers(inspect.getmodule(Document)):
+            if inspect.isclass(obj) and issubclass(obj, Document) and obj is not Document:
+                if hasattr(obj, '_meta') and obj._meta.get('collection') == self.table_name:
+                    doc_class = obj
+                    break
 
         # Process results based on whether we found a matching document class
         processed_results = []

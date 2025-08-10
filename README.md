@@ -124,7 +124,8 @@ class AnalyticsEvent(Document):
 ## 📋 Features
 
 ### ✅ Core Features
-- **Multi-Backend Architecture**: SurrealDB + ClickHouse support
+- **Multi-Backend Architecture**: SurrealDB + ClickHouse + Redis support
+- **🔥 Intelligent Update System**: Safe partial updates preventing data loss
 - **Type-Safe Field System**: 15+ field types with validation
 - **Query System**: Q objects, QueryExpressions, and advanced filtering
 - **Relationship Management**: Graph relations and references
@@ -514,6 +515,45 @@ class PageView(Document):
 user = await User.objects.get(username="alice")
 page_views = await PageView.objects.filter(user_id=str(user.id)).all()
 ```
+
+### 🔥 NEW in v0.3.0: Intelligent Update System
+
+QuantumEngine now features a comprehensive intelligent update system that prevents data loss and provides safe partial document updates:
+
+```python
+# Safe partial updates - only modify specified fields
+user = await User.objects.get(username="alice")
+await user.update(age=26, status="premium")  # Only updates age and status
+
+# Intelligent save() with change tracking
+user = await User.objects.get(username="alice")
+user.age = 27
+user.email = "alice@newdomain.com"
+await user.save()  # Only updates changed fields (age and email)
+
+# Relation updates preserve endpoints
+class Friendship(RelationDocument):
+    status = StringField(choices=["pending", "accepted", "blocked"])
+    since = DateTimeField()
+    
+    class Meta:
+        collection = "friendships"
+
+friendship = await Friendship.objects.get(id="friendship123")
+await friendship.update_relation_attributes(status="blocked")
+# Preserves in_document and out_document, only updates status
+
+# Multi-backend partial updates
+await ClickHouseDoc.update(metrics_count=1500)  # ClickHouse ALTER TABLE UPDATE
+await RedisDoc.update(session_data={"active": True})  # Redis hash updates
+```
+
+**Key Benefits:**
+- **Data Loss Prevention**: Partial updates preserve unchanged fields
+- **Change Tracking**: Intelligent save() only updates modified fields  
+- **Multi-Backend Support**: Works consistently across SurrealDB, ClickHouse, and Redis
+- **Relation Safety**: RelationDocument updates preserve relationship endpoints
+- **Backend Optimization**: Uses optimal update syntax for each database type
 
 ### Schema Management Examples
 ```python

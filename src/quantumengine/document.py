@@ -798,9 +798,28 @@ class Document(metaclass=DocumentMetaclass):
         table_name = self._get_collection_name()
         
         if self.id:
-            # Update existing document - for now, use backend insert with ID
-            # Most backends will treat this as an upsert
-            result_data = await backend.insert(table_name, data)
+            # Update existing document using proper update method to avoid data loss
+            # Only include changed fields or all fields if none are tracked
+            if hasattr(self, '_changed_fields') and self._changed_fields:
+                # Use partial update with only changed fields
+                update_data = {}
+                for field_name in self._changed_fields:
+                    if field_name in self._fields:
+                        field = self._fields[field_name]
+                        if field_name in data:  # Ensure the field is in the to_db output
+                            db_field = field.db_field or field_name
+                            update_data[db_field] = data[db_field]
+                
+                if update_data:
+                    # Build condition to update by ID
+                    id_condition = backend.build_condition('id', '=', self.id)
+                    result_data = await backend.update(table_name, [id_condition], update_data)
+                else:
+                    # No changes to save
+                    result_data = [self.to_db()]
+            else:
+                # Fall back to full document replacement if no change tracking
+                result_data = await backend.insert(table_name, data)
         else:
             # Create new document
             result_data = await backend.insert(table_name, data)
@@ -831,6 +850,10 @@ class Document(metaclass=DocumentMetaclass):
                 for field_name, field in self._fields.items():
                     if field_name in doc_data:
                         self._data[field_name] = field.from_db(doc_data[field_name])
+
+        # Clear changed fields tracking after successful save
+        if hasattr(self, '_changed_fields'):
+            self._changed_fields = []
 
         # Trigger post_save signal
         if SIGNAL_SUPPORT:
@@ -908,10 +931,168 @@ class Document(metaclass=DocumentMetaclass):
                     if field_name in doc_data:
                         self._data[field_name] = field.from_db(doc_data[field_name])
 
+        # Clear changed fields tracking after successful save
+        if hasattr(self, '_changed_fields'):
+            self._changed_fields = []
+
         # Trigger post_save signal
         if SIGNAL_SUPPORT:
             post_save.send(self.__class__, document=self, created=is_new)
 
+        return self
+
+    async def update(self: T, **fields: Any) -> T:
+        """Update specific fields of the document asynchronously.
+        
+        This method performs a partial update, only modifying the specified fields
+        while preserving all other existing data. This is safer than save() which
+        replaces the entire document.
+        
+        Args:
+            **fields: Fields to update with their new values
+            
+        Returns:
+            The updated document instance
+            
+        Raises:
+            ValueError: If the document doesn't have an ID
+            ValidationError: If the updated fields fail validation
+        """
+        if not self.id:
+            raise ValueError("Cannot update a document without an ID")
+        
+        if not fields:
+            return self  # Nothing to update
+        
+        # Update only the specified fields in memory
+        for field_name, value in fields.items():
+            if field_name in self._fields:
+                setattr(self, field_name, value)
+            else:
+                raise ValueError(f"Field '{field_name}' does not exist on {self.__class__.__name__}")
+        
+        # Validate only the changed fields
+        for field_name in fields:
+            if field_name in self._fields:
+                field = self._fields[field_name]
+                field.validate(getattr(self, field_name))
+        
+        # Get backend for this document
+        backend = self._get_backend()
+        table_name = self._get_collection_name()
+        
+        # Prepare data for update (only changed fields)
+        update_data = {}
+        for field_name, value in fields.items():
+            if field_name in self._fields:
+                field = self._fields[field_name]
+                update_data[field_name] = field.to_db(value)
+        
+        # Build condition to update by ID
+        id_condition = backend.build_condition('id', '=', self.id)
+        
+        # Perform the update
+        updated_docs = await backend.update(table_name, [id_condition], update_data)
+        
+        # Update the current instance with the returned data
+        if updated_docs:
+            doc_data = updated_docs[0] if isinstance(updated_docs, list) else updated_docs
+            if isinstance(doc_data, dict):
+                # Update internal data with returned values
+                self._data.update(doc_data)
+                
+                # Convert fields back from database format
+                for field_name, field in self._fields.items():
+                    if field_name in doc_data:
+                        self._data[field_name] = field.from_db(doc_data[field_name])
+        
+        # Clear changed fields tracking after successful update
+        if hasattr(self, '_changed_fields'):
+            self._changed_fields = []
+        
+        return self
+
+    def update_sync(self: T, **fields: Any) -> T:
+        """Update specific fields of the document synchronously.
+        
+        This method performs a partial update, only modifying the specified fields
+        while preserving all other existing data. This is safer than save_sync() which
+        replaces the entire document.
+        
+        Args:
+            **fields: Fields to update with their new values
+            
+        Returns:
+            The updated document instance
+            
+        Raises:
+            ValueError: If the document doesn't have an ID
+            ValidationError: If the updated fields fail validation
+        """
+        if not self.id:
+            raise ValueError("Cannot update a document without an ID")
+        
+        if not fields:
+            return self  # Nothing to update
+        
+        # Update only the specified fields in memory
+        for field_name, value in fields.items():
+            if field_name in self._fields:
+                setattr(self, field_name, value)
+            else:
+                raise ValueError(f"Field '{field_name}' does not exist on {self.__class__.__name__}")
+        
+        # Validate only the changed fields
+        for field_name in fields:
+            if field_name in self._fields:
+                field = self._fields[field_name]
+                field.validate(getattr(self, field_name))
+        
+        # Get backend for this document
+        backend = self._get_backend()
+        table_name = self._get_collection_name()
+        
+        # Prepare data for update (only changed fields)
+        update_data = {}
+        for field_name, value in fields.items():
+            if field_name in self._fields:
+                field = self._fields[field_name]
+                update_data[field_name] = field.to_db(value)
+        
+        # Build condition to update by ID
+        id_condition = backend.build_condition('id', '=', self.id)
+        
+        # Perform the update synchronously
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, use create_task and await in a sync way
+                task = loop.create_task(backend.update(table_name, [id_condition], update_data))
+                # Use asyncio.wait_for with current loop
+                updated_docs = loop.run_until_complete(task)
+            else:
+                updated_docs = loop.run_until_complete(backend.update(table_name, [id_condition], update_data))
+        except RuntimeError:
+            # No event loop, create one
+            updated_docs = asyncio.run(backend.update(table_name, [id_condition], update_data))
+        
+        # Update the current instance with the returned data
+        if updated_docs:
+            doc_data = updated_docs[0] if isinstance(updated_docs, list) else updated_docs
+            if isinstance(doc_data, dict):
+                # Update internal data with returned values
+                self._data.update(doc_data)
+                
+                # Convert fields back from database format
+                for field_name, field in self._fields.items():
+                    if field_name in doc_data:
+                        self._data[field_name] = field.from_db(doc_data[field_name])
+        
+        # Clear changed fields tracking after successful update
+        if hasattr(self, '_changed_fields'):
+            self._changed_fields = []
+        
         return self
 
     async def delete(self, connection: Optional[Any] = None) -> bool:
@@ -2391,6 +2572,56 @@ class RelationDocument(Document):
         # Return the current value if resolution failed
         return self.out_document
 
+    async def update_relation_attributes(self, **attrs: Any) -> 'RelationDocument':
+        """Update relation attributes asynchronously.
+        
+        This is a convenience method specifically for updating relation attributes
+        while preserving the in_document and out_document references.
+        
+        Args:
+            **attrs: Relation attributes to update
+            
+        Returns:
+            The updated RelationDocument instance
+            
+        Raises:
+            ValueError: If the relation document doesn't have an ID
+        """
+        # Filter out protected fields that shouldn't be updated directly
+        protected_fields = {'in_document', 'out_document', 'in', 'out'}
+        update_attrs = {k: v for k, v in attrs.items() if k not in protected_fields}
+        
+        if not update_attrs:
+            return self  # Nothing to update
+        
+        # Use the base update method
+        return await self.update(**update_attrs)
+
+    def update_relation_attributes_sync(self, **attrs: Any) -> 'RelationDocument':
+        """Update relation attributes synchronously.
+        
+        This is a convenience method specifically for updating relation attributes
+        while preserving the in_document and out_document references.
+        
+        Args:
+            **attrs: Relation attributes to update
+            
+        Returns:
+            The updated RelationDocument instance
+            
+        Raises:
+            ValueError: If the relation document doesn't have an ID
+        """
+        # Filter out protected fields that shouldn't be updated directly
+        protected_fields = {'in_document', 'out_document', 'in', 'out'}
+        update_attrs = {k: v for k, v in attrs.items() if k not in protected_fields}
+        
+        if not update_attrs:
+            return self  # Nothing to update
+        
+        # Use the base update method
+        return self.update_sync(**update_attrs)
+
     def resolve_out_sync(self, connection=None):
         """Resolve the out_document field synchronously.
 
@@ -2443,3 +2674,4 @@ class RelationDocument(Document):
 
         # Return the current value if resolution failed
         return self.out_document
+
