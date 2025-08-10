@@ -20,18 +20,17 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 try:
-    from src.quantumengine.backends.surrealdb import SurrealDBBackend
-    from src.quantumengine.document import Document
-    from src.quantumengine.fields import (
+    from quantumengine import Document, create_connection
+    from quantumengine.backends.base import BaseBackend
+    from quantumengine.fields import (
         StringField, DecimalField, DateTimeField, BooleanField, 
         IntField, FloatField
     )
-    from src.quantumengine.materialized_document import (
+    from quantumengine.materialized_document import (
         MaterializedDocument, MaterializedField, 
         Count, Sum, Avg, Max, Min, CountDistinct,
         ToDate, ToYearMonth
     )
-    from src.quantumengine.connection import ConnectionRegistry
     print("✅ Successfully imported QuantumORM components")
 except ImportError as e:
     print(f"❌ Failed to import QuantumORM components: {e}")
@@ -112,31 +111,15 @@ class ProductSummary(MaterializedDocument):
     buybox_wins = MaterializedField(aggregate=Sum('is_buybox_winner'))
 
 
-async def setup_test_environment():
+async def setup_test_environment() -> Optional[BaseBackend]:
     """Set up SurrealDB connection and clean environment."""
     print("\n🔧 Setting Up Test Environment...")
     
     try:
-        # Use the working connection pattern from performance tests
-        from src.quantumengine.connection import create_connection
-        
-        # Create connection using the working pattern
-        connection = create_connection(
-            url="ws://localhost:8000/rpc",
-            namespace="test_ns",
-            database="test_db",
-            username="root",
-            password="root",
-            make_default=True,
-            async_mode=True,
+        backend = create_connection(
+            backend='surrealdb',
+            **SURREALDB_CONFIG
         )
-        await connection.connect()
-        
-        backend = SurrealDBBackend(connection)
-        
-        # Register the backend connection
-        ConnectionRegistry.register('surrealdb_e2e', connection, 'surrealdb')
-        ConnectionRegistry.set_default('surrealdb', 'surrealdb_e2e')
         
         print("✅ Connected to SurrealDB")
         
@@ -149,7 +132,7 @@ async def setup_test_environment():
         
         for query in cleanup_queries:
             try:
-                await backend._execute(query)
+                await backend.execute_raw(query)
             except Exception:
                 pass  # Ignore errors for non-existent tables
         
@@ -164,7 +147,7 @@ async def setup_test_environment():
         return None
 
 
-async def test_base_table_creation(backend):
+async def test_base_table_creation(backend: BaseBackend):
     """Create the base sales data table."""
     print("\n📊 Creating Base Table...")
     
@@ -173,7 +156,7 @@ async def test_base_table_creation(backend):
         print("✅ Created sales_data_e2e table")
         
         # Verify table exists by trying to query it
-        result = await backend._query("SELECT * FROM sales_data_e2e LIMIT 0")
+        await backend.execute_raw("SELECT * FROM sales_data_e2e LIMIT 0")
         print("✅ Table structure verified")
         return True
             
@@ -304,55 +287,21 @@ async def test_materialized_view_creation():
         return False
 
 
-async def test_materialized_view_queries(backend):
+async def test_materialized_view_queries(backend: BaseBackend):
     """Query the materialized views to verify data aggregation."""
     print("\n🔍 Querying Materialized Views...")
     
     try:
-        # Query daily sales summary
-        print("\n📈 Daily Sales Summary:")
         daily_query = "SELECT * FROM daily_sales_summary_e2e"
-        daily_results = await backend._query(daily_query)
+        daily_results = await backend.execute_raw(daily_query)
+        assert daily_results
         
-        if daily_results:
-            print(f"✅ Found {len(daily_results)} daily summary records")
-            for record in daily_results:
-                if isinstance(record, dict):
-                    date_str = str(record.get('date', 'N/A'))[:10]
-                    seller = record.get('seller_name', 'N/A')
-                    total_sales = record.get('total_sales', 0)
-                    count = record.get('transaction_count', 0)
-                    print(f"   {date_str} | {seller} | Sales: ${total_sales} | Count: {count}")
-        else:
-            print("❌ No daily summary data found")
-            return False
-        
-        # Query product summary
-        print("\n📦 Product Summary:")
         product_query = "SELECT * FROM product_summary_e2e"
-        product_results = await backend._query(product_query)
+        product_results = await backend.execute_raw(product_query)
+        assert product_results
         
-        if product_results:
-            print(f"✅ Found {len(product_results)} product summary records")
-            for record in product_results:
-                if isinstance(record, dict):
-                    sku = record.get('product_sku', 'N/A')
-                    revenue = record.get('total_revenue', 0)
-                    quantity = record.get('total_quantity', 0)
-                    sellers = record.get('unique_sellers', 0)
-                    marketplaces = record.get('unique_marketplaces', 0)
-                    print(f"   {sku} | Revenue: ${revenue} | Qty: {quantity} | Sellers: {sellers} | Markets: {marketplaces}")
-        else:
-            print("❌ No product summary data found")
-            return False
-        
-        # Basic verification that we got some results
-        if len(daily_results) > 0 and len(product_results) > 0:
-            print("✅ Materialized views contain aggregated data")
-            return True
-        else:
-            print("❌ Materialized views missing data")
-            return False
+        print("✅ Materialized views contain aggregated data")
+        return True
             
     except Exception as e:
         print(f"❌ Failed to query materialized views: {e}")
@@ -360,57 +309,26 @@ async def test_materialized_view_queries(backend):
         traceback.print_exc()
         return False
 
-
-async def test_data_update_propagation(backend):
+async def test_data_update_propagation(backend: BaseBackend):
     """Test that materialized views update when base data changes."""
     print("\n🔄 Testing Data Update Propagation...")
     
     try:
-        # Get current count from materialized view
         count_query = "SELECT count() FROM daily_sales_summary_e2e"
-        initial_count_result = await backend._query(count_query)
-        initial_count = 0
-        if initial_count_result and len(initial_count_result) > 0:
-            first_result = initial_count_result[0]
-            if isinstance(first_result, dict) and 'count' in first_result:
-                initial_count = first_result['count']
+        initial_count_result = await backend.execute_raw(count_query)
+        initial_count = initial_count_result[0]['count'] if initial_count_result else 0
         
-        print(f"✅ Initial materialized view records: {initial_count}")
-        
-        # Insert new data
-        new_data = {
-            'product_sku': 'SKU-004',
-            'seller_name': 'NewSeller',
-            'marketplace': 'NewMarket',
-            'date_collected': datetime.datetime.now().replace(hour=12, minute=0, second=0, microsecond=0),
-            'offer_price': Decimal('199.99'),
-            'quantity': 1,
-            'is_buybox_winner': True
-        }
-        
+        new_data = {'product_sku': 'SKU-004', 'seller_name': 'NewSeller', 'marketplace': 'NewMarket', 'date_collected': datetime.datetime.now(), 'offer_price': Decimal('199.99'), 'quantity': 1, 'is_buybox_winner': True}
         await backend.insert('sales_data_e2e', new_data)
-        print("✅ Inserted new test record")
         
-        # Wait for SurrealDB to process the update
         await asyncio.sleep(3)
         
-        # Check if materialized view was updated
-        new_count_result = await backend._query(count_query)
-        new_count = 0
-        if new_count_result and len(new_count_result) > 0:
-            first_result = new_count_result[0]
-            if isinstance(first_result, dict) and 'count' in first_result:
-                new_count = first_result['count']
+        new_count_result = await backend.execute_raw(count_query)
+        new_count = new_count_result[0]['count'] if new_count_result else 0
         
-        print(f"✅ Updated materialized view records: {new_count}")
-        
-        if new_count > initial_count:
-            print("✅ Materialized view automatically updated with new data")
-            return True
-        else:
-            print("⚠️ Materialized view did not update (this might be expected for SurrealDB)")
-            # SurrealDB materialized views might behave differently than ClickHouse
-            return True  # Don't fail the test for this
+        assert new_count > initial_count
+        print("✅ Materialized view automatically updated with new data")
+        return True
             
     except Exception as e:
         print(f"❌ Failed to test data update propagation: {e}")
@@ -418,23 +336,15 @@ async def test_data_update_propagation(backend):
         traceback.print_exc()
         return False
 
-
-async def cleanup_test_environment(backend):
+async def cleanup_test_environment(backend: BaseBackend):
     """Clean up test data and views."""
     print("\n🧹 Cleaning Up Test Environment...")
     
     try:
-        # Drop materialized views
         await DailySalesSummary.drop_view()
-        print("✅ Dropped DailySalesSummary view")
-        
         await ProductSummary.drop_view()
-        print("✅ Dropped ProductSummary view")
-        
-        # Drop base table
-        await backend._execute("REMOVE TABLE IF EXISTS sales_data_e2e")
-        print("✅ Dropped sales_data_e2e table")
-        
+        await backend.execute_raw("REMOVE TABLE IF EXISTS sales_data_e2e")
+        print("✅ Cleaned up test environment")
         return True
         
     except Exception as e:

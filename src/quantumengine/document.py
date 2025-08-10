@@ -5,7 +5,7 @@ from dataclasses import dataclass, field as dataclass_field, make_dataclass
 from typing import Any, Dict, List, Optional, Type, Union, ClassVar, TypeVar, Generic
 from .query import QuerySet, RelationQuerySet, QuerySetDescriptor
 from .fields import Field, RecordIDField, ReferenceField, DictField
-from .connection import ConnectionRegistry, SurrealEngineAsyncConnection, SurrealEngineSyncConnection
+from .connection_api import ConnectionRegistry, SurrealEngineAsyncConnection, SurrealEngineSyncConnection
 from .types import IdType, DatabaseValue
 from surrealdb import RecordID
 from .signals import (

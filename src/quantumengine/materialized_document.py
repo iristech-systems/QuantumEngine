@@ -27,7 +27,7 @@ import inspect
 from .document import Document, DocumentMetaclass
 from .fields import Field
 from .query import QuerySet
-from .connection import ConnectionRegistry
+from .connection_api import ConnectionRegistry
 
 
 class AggregateFunction:

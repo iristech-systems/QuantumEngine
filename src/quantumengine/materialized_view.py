@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Type, Union, TYPE_CHECKING, Callab
 # Remove the direct import of Document
 # from .document import Document
 from .query import QuerySet
-from .connection import ConnectionRegistry
+from .connection_api import ConnectionRegistry
 
 
 class Aggregation:

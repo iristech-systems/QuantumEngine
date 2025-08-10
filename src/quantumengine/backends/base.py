@@ -1,7 +1,9 @@
 """Base backend interface for QuantumEngine."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
+
+from ..connection import ConnectionPoolBase, PoolConfig
 
 
 class BaseBackend(ABC):
@@ -10,30 +12,32 @@ class BaseBackend(ABC):
     All database backends must implement this interface to work with QuantumEngine.
     """
     
-    def __init__(self, connection: Any) -> None:
-        """Initialize the backend with a connection.
-        
-        Args:
-            connection: The database connection object
-        """
-        self.connection = connection
-        # Standardized client access - backends override _initialize_client()
-        self.client = self._initialize_client(connection)
+    def __init__(self, connection_config: dict, pool_config: Optional[PoolConfig] = None):
+        """Initialize the backend with connection and pool configurations."""
+        self.connection_config = connection_config
+        self.pool_config = pool_config or PoolConfig()
+        self._pool: Optional[ConnectionPoolBase] = None
     
-    def _initialize_client(self, connection: Any) -> Any:
-        """Initialize the client from the connection.
-        
-        This method should be overridden by backends to handle their specific
-        connection patterns consistently.
-        
-        Args:
-            connection: The connection object from ConnectionRegistry
-            
-        Returns:
-            The actual client object to use for database operations
-        """
-        # Default implementation - assume connection is the client
-        return connection
+    def get_pool(self) -> ConnectionPoolBase:
+        """Get or create the connection pool."""
+        if self._pool is None:
+            self._pool = self._create_pool()
+        return self._pool
+
+    @abstractmethod
+    def _create_pool(self) -> ConnectionPoolBase:
+        """Create a backend-specific connection pool."""
+        pass
+
+    async def execute_with_pool(self, operation: Callable, *args: Any, **kwargs: Any) -> Any:
+        """Execute an operation using a pooled connection."""
+        pool = self.get_pool()
+        conn = await pool.get_connection()
+        try:
+            # The operation is expected to be a coroutine function that accepts the connection as its first argument
+            return await operation(conn, *args, **kwargs)
+        finally:
+            await pool.return_connection(conn)
     
     @abstractmethod
     async def create_table(self, document_class: Type, **kwargs) -> None:
