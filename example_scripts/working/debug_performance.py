@@ -28,18 +28,16 @@ async def debug_direct_access():
     """Debug direct record access queries."""
     print("🔍 Debugging direct record access...")
     
-    # Create connection
-    connection = create_connection(
+    # Create connection using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db", 
         username="root",
         password="root",
-        make_default=True
-    )
-    await connection.connect()
-    
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
         # Create test users and collect their actual IDs
         print("Creating test users...")
         created_users = []
@@ -114,8 +112,7 @@ async def debug_direct_access():
         except Exception as e:
             print(f"   Error: {e}")
             
-    finally:
-        await connection.disconnect()
+        print("Connection automatically managed by async context manager")
 
 
 if __name__ == "__main__":

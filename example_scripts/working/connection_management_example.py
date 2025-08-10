@@ -53,8 +53,8 @@ class User(Document):
 async def basic_connection_example():
     logger.info("=== Basic Connection Example ===")
     
-    # Create a basic SurrealDB connection using enhanced API
-    connection = create_connection(
+    # Create a basic SurrealDB connection using enhanced API with connection pooling
+    async with create_connection(
         name="surrealdb_basic",
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
@@ -62,13 +62,12 @@ async def basic_connection_example():
         username="root",
         password="root",
         backend="surrealdb",  # Explicit backend specification
-        make_default=True
-    )
-    
-    await connection.connect()
-    logger.info("Connected to SurrealDB")
-    
-    try:
+        make_default=True,
+        auto_connect=True,
+        use_pool=True,  # Enable connection pooling
+        pool_size=5
+    ) as connection:
+        logger.info("Connected to SurrealDB with connection pooling")
         # Test the connection with a simple operation
         await User.create_table()
         user = User(name="test_user", age=25)
@@ -77,12 +76,7 @@ async def basic_connection_example():
         
         # Clean up
         await user.delete()
-        
-    except Exception as e:
-        logger.error(f"Operation failed: {str(e)}")
-    finally:
-        await connection.disconnect()
-        logger.info("Disconnected from SurrealDB")
+        logger.info("Connection automatically managed by async context manager with pooling")
 
 # Example of using connection pooling (not yet implemented)
 # def connection_pool_example():

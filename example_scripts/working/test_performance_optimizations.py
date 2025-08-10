@@ -320,23 +320,18 @@ async def run_all_tests():
     print("🧪 Starting SurrealEngine Performance Optimization Tests")
     print("=" * 60)
     
-    # Create connection
-    connection = create_connection(
+    # Create connection using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
         make_default=True,
-        async_mode=True,
-    )
-    await connection.connect()
-
-    ConnectionRegistry.register('surrealdb_default', connection, 'surrealdb')
-    ConnectionRegistry.set_default('surrealdb', 'surrealdb_default')
-    print("Connected to in-memory SurrealDB")
-    
-    try:
+        auto_connect=True,
+        name="surrealdb_performance"
+    ) as connection:
+        print("Connected to SurrealDB with connection pooling")
         # Setup test data
         await setup_test_data()
         
@@ -383,8 +378,7 @@ async def run_all_tests():
         else:
             print("⚠️  Some tests failed - check the output above for details")
             
-    finally:
-        await connection.disconnect()
+        print("Connection automatically managed by async context manager")
 
 
 if __name__ == "__main__":

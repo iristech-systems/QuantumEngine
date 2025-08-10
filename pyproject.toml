@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "quantumengine"
-version = "0.3.0"
+version = "0.4.0"
 description = "Multi-Backend Object-Document Mapper (ODM) for ClickHouse, SurrealDB, and more - Quantum-Powered Database Engine"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -89,6 +89,13 @@ where = ["src"]
 quantumengine = ["py.typed"]
 
 [dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "mypy>=1.17.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "ruff>=0.12.5",
+]
 docs = [
     "sphinx>=7.4.7",
     "sphinx-autodoc-typehints>=2.3.0",

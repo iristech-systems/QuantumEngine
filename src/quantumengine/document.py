@@ -2167,9 +2167,13 @@ class Document(metaclass=DocumentMetaclass):
         # Get the backend for this document
         backend = cls._get_backend()
         
-        # Delegate to backend-specific create_table method
-        import asyncio
-        asyncio.run(backend.create_table(cls, schemafull=schemafull))
+        # Delegate to backend-specific create_table_sync method
+        if hasattr(backend, 'create_table_sync'):
+            backend.create_table_sync(cls, schemafull=schemafull)
+        else:
+            # Fallback to async method if sync method doesn't exist
+            import asyncio
+            asyncio.run(backend.create_table(cls, schemafull=schemafull))
 
     @classmethod
     async def drop_table(cls, connection: Optional[Any] = None, if_exists: bool = True) -> None:

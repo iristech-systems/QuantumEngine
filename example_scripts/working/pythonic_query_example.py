@@ -47,8 +47,9 @@ class Post(Document):
 
 
 async def setup_connection():
-    """Setup database connection."""
+    """Setup database connection using modern connection pooling."""
     try:
+        # Modern connection approach with auto-connect
         conn = create_connection(
             backend='surrealdb',
             url='ws://localhost:8000/rpc',
@@ -56,11 +57,10 @@ async def setup_connection():
             password='root',
             namespace='examples',
             database='pythonic_queries',
-            async_mode=True
+            name='pythonic_example',
+            make_default=True,
+            auto_connect=True
         )
-        await conn.connect()
-        ConnectionRegistry.register('pythonic_example', conn, 'surrealdb')
-        ConnectionRegistry.set_default('surrealdb', 'pythonic_example')
         print("✅ Connected to SurrealDB")
         return True
     except Exception as e:

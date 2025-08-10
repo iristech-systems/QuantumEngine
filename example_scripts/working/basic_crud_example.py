@@ -23,20 +23,17 @@ class User(Document):
         ]
 
 async def main():
-    # Connect to the database
-    connection = create_connection(
+    # Connect to the database using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
-        make_default=True
-    )
-    
-    await connection.connect()
-    print("Connected to SurrealDB")
-    
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("Connected to SurrealDB")
         # Create the table and indexes
         try:
             await User.create_table()
@@ -139,14 +136,7 @@ async def main():
             await remaining_user.delete()
         print("Cleaned up all users")
         
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        # Disconnect from the database
-        await connection.disconnect()
-        print("Disconnected from SurrealDB")
+        print("Connection automatically managed by async context manager")
 
 # Run the async example
 if __name__ == "__main__":

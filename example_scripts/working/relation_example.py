@@ -41,20 +41,18 @@ class AuthorRelation(RelationDocument):
 
 
 async def main():
-    # Connect to the database
-    connection = create_connection(
+    # Connect to the database using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
-        make_default=True
-    )
-
-    await connection.connect()
-    print("Connected to SurrealDB")
-
-    try:
+        backend='surrealdb',
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("Connected to SurrealDB")
         # Create tables
         try:
             await Person.create_table()
@@ -106,12 +104,7 @@ async def main():
         await person.delete()
         await book.delete()
         print("Deleted person and book")
-
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        await connection.disconnect()
-        print("Disconnected from SurrealDB")
+        print("Connection automatically managed by async context manager")
 
 
 if __name__ == "__main__":

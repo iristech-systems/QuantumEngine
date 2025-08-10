@@ -53,20 +53,17 @@ print("Class definition completed. Starting async main...")
 async def main():
     print("Testing core field fixes...")
     
-    # Connect to SurrealDB
-    connection = create_connection(
+    # Connect to SurrealDB using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
-        make_default=True
-    )
-    
-    await connection.connect()
-    print("Connected to SurrealDB")
-    
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("Connected to SurrealDB")
         # Create table
         try:
             await TestProduct.create_table(schemafull=True)
@@ -75,15 +72,7 @@ async def main():
             print(f"Table might already exist: {e}")
         
         print("✅ All complex fields are working properly in class definition!")
-        
-    except Exception as e:
-        print(f"❌ Error during testing: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    finally:
-        await connection.disconnect()
-        print("Disconnected from SurrealDB")
+        print("Connection automatically managed by async context manager")
 
 if __name__ == "__main__":
     print("Starting asyncio.run...")

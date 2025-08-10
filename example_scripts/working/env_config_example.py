@@ -40,20 +40,17 @@ async def main():
     print(f"Username: {username}")
     print(f"Password: {'*' * len(password)}")  # Don't print actual password
     
-    # Connect to the database using environment variables
-    connection = create_connection(
+    # Connect to the database using environment variables with modern connection pooling
+    async with create_connection(
         url=url,
         namespace=namespace,
         database=database,
         username=username,
         password=password,
-        make_default=True
-    )
-    
-    await connection.connect()
-    print("\nConnected to SurrealDB using environment variables")
-    
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("\nConnected to SurrealDB using environment variables")
         # Create the table and indexes
         await Config.create_table(connection)
         await Config.create_indexes(connection)
@@ -94,15 +91,12 @@ async def main():
         updated_debug = await Config.objects.get(key="app.debug")
         print(f"Verified update: {updated_debug.key} is now {updated_debug.value}")
         
-    finally:
         # Clean up - delete all configs
         all_configs = await Config.objects.all()
         for config in all_configs:
             await config.delete()
         
-        # Disconnect from the database
-        await connection.disconnect()
-        print("\nCleaned up and disconnected from SurrealDB")
+        print("\nConnection automatically managed by async context manager")
 
 # Run the async example
 if __name__ == "__main__":

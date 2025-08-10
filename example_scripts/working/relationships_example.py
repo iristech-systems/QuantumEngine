@@ -50,20 +50,17 @@ class Book(Document):
         collection = "books"
 
 async def main():
-    # Connect to the database
-    connection = create_connection(
+    # Connect to the database using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
-        make_default=True
-    )
-
-    await connection.connect()
-    print("Connected to SurrealDB")
-
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("Connected to SurrealDB")
         # Create authors
         author1 = Author(name="Jane Doe", bio="Bestselling author of fiction novels")
         author2 = Author(name="John Smith", bio="Award-winning science writer")
@@ -135,9 +132,7 @@ async def main():
         for author in [author1, author2]:
             await author.delete()
 
-        # Disconnect from the database
-        await connection.disconnect()
-        print("Cleaned up and disconnected from SurrealDB")
+        print("Connection automatically managed by async context manager")
 
 # Run the async example
 if __name__ == "__main__":

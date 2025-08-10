@@ -43,7 +43,9 @@ def main():
             Task.create_table_sync(schemafull=True)
             print("Created task table")
         except Exception as e:
+            import traceback
             print(f"Table might already exist: {e}")
+            traceback.print_exc()
         
         try:
             Task.create_indexes_sync()

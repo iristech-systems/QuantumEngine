@@ -16,19 +16,17 @@ class SimpleProduct(Document):
 async def main():
     print("Testing minimal example...")
     
-    connection = create_connection(
+    # Use modern connection pooling with async context manager
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
-        make_default=True
-    )
-    
-    await connection.connect()
-    print("Connected to SurrealDB")
-    
-    try:
+        make_default=True,
+        auto_connect=True
+    ) as connection:
+        print("Connected to SurrealDB")
         # Create table
         await SimpleProduct.create_table(schemafull=True)
         print("Created table")
@@ -44,11 +42,7 @@ async def main():
         print(f"✅ Success: {product.name}")
         
         await product.delete()
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
-    finally:
-        await connection.disconnect()
+        print("Connection automatically managed by async context manager")
 
 if __name__ == "__main__":
     asyncio.run(main())

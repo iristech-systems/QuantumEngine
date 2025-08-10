@@ -37,14 +37,28 @@ pip install quantumengine[clickhouse]
 # With SurrealDB support  
 pip install quantumengine[surrealdb]
 
-# With both backends
-pip install quantumengine[clickhouse,surrealdb]
+# With Redis support
+pip install quantumengine[redis]
+
+# With multiple backends
+pip install quantumengine[clickhouse,surrealdb,redis]
 
 # Everything (all backends + dev tools)
 pip install quantumengine[all]
 ```
 
 See [INSTALLATION.md](INSTALLATION.md) for detailed installation options and troubleshooting.
+
+## 🆕 What's New in v0.4.0
+
+- **🔗 Connection Pooling**: Advanced connection pooling across all backends (SurrealDB, ClickHouse, Redis) with configurable pool sizes, health checks, and idle timeouts
+- **🎯 Standardized Connection API**: Consistent `create_connection()` interface across all backends
+- **🔄 Sync API Support**: Full synchronous API with `async_mode=False` and sync method variants
+- **🛡️ Enhanced Parameter Validation**: Clear error messages with suggested fixes for connection parameters  
+- **⚡ Redis Backend**: Complete Redis/Dragonfly support for caching and real-time data
+- **📊 ClickHouse Connection Pooling**: Full connection pooling implementation for ClickHouse backend with automatic resource management
+- **📚 Comprehensive Documentation**: Complete API guide and migration documentation
+- **🔧 Backward Compatibility**: Seamless migration from legacy connection APIs
 
 ## 🚀 Quick Start
 
@@ -60,56 +74,81 @@ class User(Document):
     
     class Meta:
         collection = "users"
-        backend = "surrealdb"  # or "clickhouse"
+        backend = "surrealdb"  # or "clickhouse", "redis"
 
-# Create connection
+# Create connection with standardized API
 connection = create_connection(
+    backend="surrealdb",  # Explicitly specify backend
     url="ws://localhost:8000/rpc",
     namespace="test_ns",
     database="test_db",
-    username=os.environ.get("SURREALDB_USER"),
-    password=os.environ.get("SURREALDB_PASS"),
+    username=os.environ.get("SURREALDB_USER", "root"),
+    password=os.environ.get("SURREALDB_PASS", "root"),
     make_default=True
 )
 
-await connection.connect()
+# Use async context manager
+async with connection:
+    # Create table
+    await User.create_table()
 
-# Create table
-await User.create_table()
+    # CRUD operations
+    user = User(username="alice", email="alice@example.com", age=25)
+    await user.save()
 
-# CRUD operations
-user = User(username="alice", email="alice@example.com", age=25)
-await user.save()
-
-users = await User.objects.filter(age__gt=18).all()
-await User.objects.filter(username="alice").update(age=26)
+    users = await User.objects.filter(age__gt=18).all()
+    await User.objects.filter(username="alice").update(age=26)
 ```
 
 ## 🏗️ Architecture
 
-QuantumORM provides a unified interface for multiple database backends:
+QuantumEngine provides a unified interface for multiple database backends:
 
 - **SurrealDB Backend**: Graph database with native support for relations, transactions, and complex queries
-- **ClickHouse Backend**: High-performance columnar database optimized for analytics and time-series data
+- **ClickHouse Backend**: High-performance columnar database optimized for analytics and time-series data  
+- **Redis Backend**: In-memory database for caching, sessions, and real-time data storage
 
-### Multi-Backend Support
+### Multi-Backend Support with Connection Pooling
 
 ```python
+from quantumengine.connection import PoolConfig
+
+# Configure connection pooling
+pool_config = PoolConfig(
+    max_size=20,
+    min_size=5,
+    max_idle_time=300  # seconds
+)
+
 # SurrealDB connection for transactional data
 user_connection = create_connection(
-    name="surrealdb_main",
-    url="ws://localhost:8000/rpc",
     backend="surrealdb",
+    url="ws://localhost:8000/rpc",
+    username="root",
+    password="root",
+    namespace="production",
+    database="users",
+    pool_config=pool_config,
     make_default=True
 )
 
 # ClickHouse connection for analytics
 analytics_connection = create_connection(
-    name="clickhouse_analytics", 
-    url="host.clickhouse.cloud",
     backend="clickhouse",
-    port=443,
-    secure=True
+    url="localhost",  # Standardized parameter
+    username="default",
+    password="",
+    port=8123,  # Auto-set if not provided
+    secure=False,  # Auto-set if not provided
+    pool_config=pool_config
+)
+
+# Redis connection for caching
+cache_connection = create_connection(
+    backend="redis",
+    url="localhost",
+    port=6379,  # Auto-set if not provided
+    password="cache_password"
 )
 
 class User(Document):
@@ -119,34 +158,40 @@ class User(Document):
 class AnalyticsEvent(Document):
     class Meta:
         backend = "clickhouse"
+
+class SessionCache(Document):
+    class Meta:
+        backend = "redis"
 ```
 
 ## 📋 Features
 
 ### ✅ Core Features
-- **Multi-Backend Architecture**: SurrealDB + ClickHouse + Redis support
+- **🔗 Multi-Backend Architecture**: SurrealDB + ClickHouse + Redis support
+- **⚡ Connection Pooling**: Production-ready connection pooling for all backends with configurable pool sizes, health checks, and automatic resource management
+- **🎯 Standardized Connection API**: Consistent interface across all backends with parameter validation
+- **🔄 Async/Sync APIs**: Complete async/await support with sync alternatives (`create_connection(..., async_mode=False)`)
 - **🔥 Intelligent Update System**: Safe partial updates preventing data loss
-- **Type-Safe Field System**: 15+ field types with validation
-- **Query System**: Q objects, QueryExpressions, and advanced filtering
-- **Relationship Management**: Graph relations and references
-- **Schema Management**: Both SCHEMAFULL and SCHEMALESS table support
-- **Async/Sync APIs**: Complete async/await support with sync alternatives
-- **Connection Management**: Named connections and connection pooling
-- **Performance Optimization**: Direct record access and bulk operations
-- **Drop Table & Migrations**: Schema migration tools and table management
+- **🛡️ Type-Safe Field System**: 15+ field types with validation and backend-specific optimization
+- **🔍 Advanced Query System**: Q objects, QueryExpressions, and Pythonic query syntax (`User.age > 30`)
+- **📊 Relationship Management**: Graph relations and references with relation documents
+- **🏗️ Schema Management**: Both SCHEMAFULL and SCHEMALESS table support with migrations
+- **⚙️ Connection Management**: Named connections, default connections, and connection registry
+- **🚀 Performance Optimization**: Direct record access, bulk operations, and connection reuse
+- **🔧 Migration Tools**: Schema migration, table dropping, and hybrid schema support
 
 ### 🔧 Field Types
 
-| Field Type | Description | SurrealDB | ClickHouse |
-|------------|-------------|-----------|------------|
-| `StringField` | Text fields with validation | ✅ | ✅ |
-| `IntField` | Integer with min/max constraints | ✅ | ✅ |
-| `FloatField` | Floating point numbers | ✅ | ✅ |
-| `BooleanField` | Boolean values | ✅ | ✅ |
-| `DateTimeField` | Date and time with timezone | ✅ | ✅ |
-| `DecimalField` | High-precision decimals | ✅ | ✅ |
-| `UUIDField` | UUID generation and validation | ✅ | ✅ |
-| `ListField` | Arrays/lists with typed elements | ✅ | ✅ |
+| Field Type | Description | SurrealDB | ClickHouse | Redis |
+|------------|-------------|-----------|------------|-------|
+| `StringField` | Text fields with validation | ✅ | ✅ | ✅ |
+| `IntField` | Integer with min/max constraints | ✅ | ✅ | ✅ |
+| `FloatField` | Floating point numbers | ✅ | ✅ | ✅ |
+| `BooleanField` | Boolean values | ✅ | ✅ | ✅ |
+| `DateTimeField` | Date and time with timezone | ✅ | ✅ | ✅ |
+| `DecimalField` | High-precision decimals | ✅ | ✅ | ✅ |
+| `UUIDField` | UUID generation and validation | ✅ | ✅ | ✅ |
+| `ListField` | Arrays/lists with typed elements | ✅ | ✅ | ✅ |
 | `DictField` | JSON/dictionary storage | ✅ | ✅ |
 | `ReferenceField` | References to other documents | ✅ | ❌ |
 | `IPAddressField` | IPv4/IPv6 address validation | ✅ | ✅ |
@@ -201,6 +246,116 @@ complex_expr = (QueryExpression(where=Q(active=True))
                .limit(10)
                .fetch("profile"))
 users = await User.objects.filter(complex_expr).all()
+```
+
+### 🔌 Connection Management
+
+#### Standardized Connection API (v0.4.0+)
+
+All backends now use a consistent connection interface:
+
+```python
+from quantumengine import create_connection
+from quantumengine.connection import PoolConfig
+
+# SurrealDB - Graph database
+surrealdb_conn = create_connection(
+    backend="surrealdb",
+    url="ws://localhost:8000/rpc",
+    username="root",
+    password="root",
+    namespace="production",
+    database="main",
+    make_default=True
+)
+
+# ClickHouse - Analytics database  
+clickhouse_conn = create_connection(
+    backend="clickhouse",
+    url="localhost",
+    username="default", 
+    password="",
+    # port=8123, secure=False  # Auto-set defaults
+    make_default=True
+)
+
+# Redis - Cache/Session store
+redis_conn = create_connection(
+    backend="redis", 
+    url="localhost",
+    # port=6379  # Auto-set default
+    password="redis_password",
+    make_default=True
+)
+```
+
+#### Connection Pooling
+
+Connection pooling is available across all backends for optimal performance:
+
+```python
+# Configure connection pool
+pool_config = PoolConfig(
+    max_size=50,        # Maximum connections
+    min_size=10,        # Minimum connections  
+    max_idle_time=300,  # Idle timeout (seconds)
+    validate_on_borrow=True  # Health check on borrow
+)
+
+# SurrealDB with connection pooling
+surrealdb_conn = create_connection(
+    backend="surrealdb",
+    url="ws://localhost:8000/rpc",
+    pool_config=pool_config,
+    make_default=True
+)
+
+# ClickHouse with connection pooling
+clickhouse_conn = create_connection(
+    backend="clickhouse", 
+    url="localhost",
+    pool_config=pool_config,
+    make_default=True
+)
+
+# Redis with connection pooling
+redis_conn = create_connection(
+    backend="redis",
+    url="localhost",
+    pool_config=pool_config,
+    make_default=True
+)
+```
+
+#### Sync API Support
+
+```python
+# Async API (default)
+async_conn = create_connection(
+    backend="surrealdb",
+    url="ws://localhost:8000/rpc",
+    auto_connect=True,
+    async_mode=True  # Default
+)
+
+# Sync API  
+sync_conn = create_connection(
+    backend="surrealdb", 
+    url="ws://localhost:8000/rpc",
+    auto_connect=True,
+    async_mode=False
+)
+
+# Use sync connection
+with sync_conn:
+    # Sync operations
+    User.create_table_sync()
+    user = User(name="Alice")
+    user.save_sync()
+    
+    # Sync queries
+    users = User.objects.all_sync()
+    active_users = User.objects.filter_sync(active=True).all_sync()
 ```
 
 ### 🔗 Relationships (SurrealDB)

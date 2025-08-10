@@ -1044,8 +1044,14 @@ class SurrealEngineAsyncConnection:
 
         if name:
             ConnectionRegistry.add_async_connection(name, self)
+            # Also register as backend-specific connection
+            ConnectionRegistry.register(name, self, 'surrealdb')
         if make_default or name is None:
             ConnectionRegistry.set_default_async_connection(self)
+            # Also set as the default for surrealdb backend
+            backend_name = name or 'default'
+            ConnectionRegistry.register(backend_name, self, 'surrealdb')
+            ConnectionRegistry.set_default('surrealdb', backend_name)
 
     async def __aenter__(self) -> 'SurrealEngineAsyncConnection':
         """Enter the async context manager.
@@ -1180,47 +1186,142 @@ from .backends import BackendRegistry
 from .connection import PoolConfig
 from .backends.base import BaseBackend
 
-def create_connection(
-    backend: str,
-    pool_config: Optional[PoolConfig] = None,
-    **connection_kwargs: Any
-) -> "BaseBackend":
-    """
-    Factory function to create and configure a backend instance.
 
-    This function initializes a backend (e.g., for SurrealDB, ClickHouse)
-    with the specified connection parameters and connection pool configuration.
+def _validate_connection_params(backend: str, params: dict) -> None:
+    """Validate backend-specific connection parameters.
+    
+    Args:
+        backend: Backend name
+        params: Connection parameters
+        
+    Raises:
+        ValueError: If required parameters are missing or invalid
+    """
+    if backend == 'surrealdb':
+        # SurrealDB validation
+        if 'url' not in params:
+            raise ValueError("SurrealDB backend requires 'url' parameter (e.g., 'ws://localhost:8000/rpc')")
+            
+    elif backend == 'clickhouse':
+        # ClickHouse validation
+        if 'url' not in params:
+            raise ValueError("ClickHouse backend requires 'url' parameter (e.g., 'localhost')")
+        # Set default port if not provided
+        if 'port' not in params:
+            params['port'] = 8123
+        # Set default secure if not provided    
+        if 'secure' not in params:
+            params['secure'] = False
+            
+    elif backend == 'redis':
+        # Redis validation
+        if 'url' not in params:
+            raise ValueError("Redis backend requires 'url' parameter (e.g., 'localhost')")
+        # Set default port if not provided
+        if 'port' not in params:
+            params['port'] = 6379
+
+def create_connection(
+    backend: str = 'surrealdb',
+    pool_config: Optional[PoolConfig] = None,
+    auto_connect: bool = False,
+    make_default: bool = False,
+    async_mode: bool = True,
+    **connection_kwargs: Any
+) -> Union["BaseBackend", "SurrealEngineAsyncConnection", "SurrealEngineSyncConnection"]:
+    """
+    Factory function to create database connections or backends.
+
+    This function can work in three modes:
+    1. New backend API: Returns backend instances for multi-backend support
+    2. Legacy async connection API: Returns SurrealEngineAsyncConnection objects
+    3. Legacy sync connection API: Returns SurrealEngineSyncConnection objects
 
     Args:
         backend: The name of the backend to use (e.g., 'surrealdb', 'clickhouse', 'redis').
         pool_config: An optional `PoolConfig` object to configure the connection pool.
-                     If not provided, default pool settings will be used.
-        **connection_kwargs: Keyword arguments for the specific backend's connection.
-                             Common arguments include `host`, `port`, `username`,
-                             `password`, `database`, etc.
+        auto_connect: If True, returns a legacy connection object
+        make_default: If True, sets as the default connection
+        async_mode: If True, returns async connection; if False, returns sync connection (only used with auto_connect)
+        **connection_kwargs: Keyword arguments for the connection.
+
+    Common Connection Parameters (standardized across backends):
+        url: Connection URL/host
+        username: Username for authentication
+        password: Password for authentication
+        port: Port number (backend-specific defaults)
+        database: Database name (SurrealDB/PostgreSQL)
+        namespace: Namespace (SurrealDB)
+        secure: Use secure connection (default varies by backend)
+        
+    Backend-Specific Parameters:
+        SurrealDB: namespace, database
+        ClickHouse: port (default 8123), secure (default False)
+        Redis: port (default 6379), db (database number)
 
     Returns:
-        An instance of the requested backend, ready to perform database operations.
-
-    Example:
-        surreal_backend = create_connection(
+        Either a Backend instance (new API), SurrealEngineAsyncConnection (legacy async), or SurrealEngineSyncConnection (legacy sync)
+        
+    Examples:
+        # SurrealDB connection
+        conn = create_connection(
             backend='surrealdb',
-            pool_config=PoolConfig(max_size=20),
-            url="ws://localhost:8000/rpc",
-            namespace="test",
-            database="test"
+            url='ws://localhost:8000/rpc',
+            username='root',
+            password='root',
+            namespace='test',
+            database='test'
         )
-        redis_backend = create_connection(
+        
+        # ClickHouse connection  
+        conn = create_connection(
+            backend='clickhouse',
+            url='localhost',
+            username='default',
+            password='',
+            port=8123
+        )
+        
+        # Redis connection
+        conn = create_connection(
             backend='redis',
-            host='localhost',
+            url='localhost',
             port=6379,
-            db=0
+            password='mypassword'
         )
     """
-    # It seems there's no BackendRegistry yet. I should probably create it.
-    # For now, I'll manually map the backend string to the class.
-    # This part needs to be implemented properly.
-
+    
+    # Validate backend-specific required parameters
+    _validate_connection_params(backend, connection_kwargs)
+    
+    # Legacy API compatibility: if auto_connect is True, return old-style connection
+    # For make_default=True with non-SurrealDB backends, use new API path
+    if auto_connect or (make_default and backend == 'surrealdb'):
+        if backend == 'surrealdb' or 'url' in connection_kwargs:
+            if async_mode:
+                # Return legacy SurrealEngineAsyncConnection that supports async context manager
+                return SurrealEngineAsyncConnection(
+                    url=connection_kwargs.get('url', 'ws://localhost:8000/rpc'),
+                    namespace=connection_kwargs.get('namespace', 'test'),
+                    database=connection_kwargs.get('database', 'test'),
+                    username=connection_kwargs.get('username', 'root'),
+                    password=connection_kwargs.get('password', 'root'),
+                    make_default=make_default
+                )
+            else:
+                # Return legacy SurrealEngineSyncConnection that supports sync context manager
+                return SurrealEngineSyncConnection(
+                    url=connection_kwargs.get('url', 'ws://localhost:8000/rpc'),
+                    namespace=connection_kwargs.get('namespace', 'test'),
+                    database=connection_kwargs.get('database', 'test'),
+                    username=connection_kwargs.get('username', 'root'),
+                    password=connection_kwargs.get('password', 'root'),
+                    make_default=make_default
+                )
+        else:
+            raise ValueError("Legacy API only supports SurrealDB connections")
+    
+    # New backend API - return backend instance
     if backend == 'surrealdb':
         from .backends.surrealdb import SurrealDBBackend
         backend_class = SurrealDBBackend
@@ -1232,8 +1333,16 @@ def create_connection(
         backend_class = RedisBackend
     else:
         raise ValueError(f"Unsupported backend: {backend}")
+    
+    backend_instance = backend_class(connection_config=connection_kwargs, pool_config=pool_config)
+    
+    # If make_default is True, register this backend as the default for this backend type
+    if make_default:
+        connection_name = connection_kwargs.get('name', 'default')
+        ConnectionRegistry.register(connection_name, backend_instance, backend)
+        ConnectionRegistry.set_default(backend, connection_name)
         
-    return backend_class(connection_config=connection_kwargs, pool_config=pool_config)
+    return backend_instance
 
 
 class SurrealEngineSyncConnection:
@@ -1278,6 +1387,10 @@ class SurrealEngineSyncConnection:
             ConnectionRegistry.add_sync_connection(name, self)
         if make_default or name is None:
             ConnectionRegistry.set_default_sync_connection(self)
+            # Also set as the default for surrealdb backend
+            backend_name = name or 'default'
+            ConnectionRegistry.register(backend_name, self, 'surrealdb')
+            ConnectionRegistry.set_default('surrealdb', backend_name)
 
     def __enter__(self) -> 'SurrealEngineSyncConnection':
         """Enter the sync context manager.

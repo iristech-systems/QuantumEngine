@@ -201,17 +201,16 @@ def example_quart_route():
 async def main():
     """Demo the functionality"""
     
-    # Create connection (you'd use your existing connection)
-    connection = create_connection(
+    # Create connection using modern connection pooling
+    async with create_connection(
         url="ws://localhost:8000/rpc",
         namespace="test_ns",
         database="test_db",
         username="root",
         password="root",
         make_default=True,
-        async_mode=True  # This is the key parameter for using sync API
-    )
-    await connection.connect()
+        auto_connect=True
+    ) as connection:
 
     # Mock request args (simulating your route parameters)
     mock_request_args = {
@@ -240,10 +239,7 @@ async def main():
         params = parse_datatables_params(datatables_args)
         print(f"\nDataTables params converted: {params}")
         
-    except Exception as e:
-        print(f"Demo error (expected if no data): {e}")
-    
-    await connection.disconnect()
+        print("Connection automatically managed by async context manager")
 
 
 if __name__ == "__main__":
