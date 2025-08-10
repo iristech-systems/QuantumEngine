@@ -11,6 +11,8 @@ import redis
 from redis import asyncio as aioredis
 
 from .base import BaseBackend
+from ..connection import ConnectionPoolBase, PoolConfig
+from ..backends.pools.redis import RedisConnectionPool
 
 
 class RedisBackend(BaseBackend):
@@ -23,33 +25,20 @@ class RedisBackend(BaseBackend):
     Secondary indexes are implemented using Redis sorted sets.
     """
     
-    def __init__(self, connection: Any) -> None:
-        """Initialize the Redis backend.
-        
-        Args:
-            connection: Redis connection (sync or async)
-        """
-        super().__init__(connection)
-        # For now, assume sync Redis client - async support can be added later
-        self.is_async = False
+    def __init__(self, connection_config: dict, pool_config: Optional[PoolConfig] = None):
+        """Initialize the Redis backend."""
+        super().__init__(connection_config, pool_config)
+        self.is_async = True  # The pooling implementation is asynchronous
         
         # Key prefixes for organization
         self.doc_prefix = "doc:"
         self.index_prefix = "idx:"
         self.meta_prefix = "meta:"
         self.seq_prefix = "seq:"
-    
-    def _initialize_client(self, connection: Any) -> Any:
-        """Initialize the Redis client from the connection.
-        
-        Args:
-            connection: The connection object from ConnectionRegistry
-            
-        Returns:
-            The Redis client object
-        """
-        # For Redis, the connection IS the client
-        return connection
+
+    def _create_pool(self) -> ConnectionPoolBase:
+        """Create the Redis-specific connection pool."""
+        return RedisConnectionPool(self.connection_config, self.pool_config)
     
     def _get_doc_key(self, table_name: str, doc_id: str) -> str:
         """Get the Redis key for a document."""
@@ -67,24 +56,18 @@ class RedisBackend(BaseBackend):
         """Get the Redis key for ID sequence."""
         return f"{self.seq_prefix}{table_name}"
     
-    async def _execute(self, method: str, *args, **kwargs) -> Any:
-        """Execute a Redis command."""
-        redis_method = getattr(self.client, method)
-        if self.is_async:
-            return await redis_method(*args, **kwargs)
-        return redis_method(*args, **kwargs)
-    
-    async def _pipeline(self):
-        """Create a pipeline for batch operations."""
-        if self.is_async:
-            return self.client.pipeline()
-        return self.client.pipeline()
-    
-    async def _execute_pipeline(self, pipe):
+    async def _execute(self, conn: Any, method: str, *args, **kwargs) -> Any:
+        """Execute a Redis command on a given connection."""
+        redis_method = getattr(conn, method)
+        return await redis_method(*args, **kwargs)
+
+    def _pipeline(self, conn: Any):
+        """Create a pipeline for batch operations from a given connection."""
+        return conn.pipeline()
+
+    async def _execute_pipeline(self, pipe: Any) -> Any:
         """Execute a pipeline."""
-        if self.is_async:
-            return await pipe.execute()
-        return pipe.execute()
+        return await pipe.execute()
     
     def _serialize_value(self, value: Any) -> str:
         """Serialize a value for storage in Redis."""
@@ -126,187 +109,120 @@ class RedisBackend(BaseBackend):
             result[key] = self._deserialize_value(value)
         return result
     
-    async def create_table(self, document_class: Type, **kwargs) -> None:
-        """Create a table/collection for the document class.
-        
-        For Redis, this primarily sets up metadata and indexes.
-        
-        Args:
-            document_class: The document class to create a table for
-            **kwargs: Backend-specific options
-        """
+    async def _create_table_op(self, conn: Any, document_class: Type, **kwargs) -> None:
+        """Operation to create a table/collection for the document class."""
         table_name = document_class._meta.get('collection')
         
-        # Store table metadata
         table_meta = {
             'created_at': datetime.utcnow().isoformat(),
-            'fields': json.dumps({
-                name: self.get_field_type(field)
-                for name, field in document_class._fields.items()
-            }),
+            'fields': json.dumps({name: self.get_field_type(field) for name, field in document_class._fields.items()}),
             'indexes': json.dumps(document_class._meta.get('indexes', []))
         }
         
-        await self._execute('hset', self._get_table_key(table_name), mapping=table_meta)
-        
-        # Initialize ID sequence
-        await self._execute('set', self._get_sequence_key(table_name), 0)
+        await self._execute(conn, 'hset', self._get_table_key(table_name), mapping=table_meta)
+        await self._execute(conn, 'set', self._get_sequence_key(table_name), 0)
+
+    async def create_table(self, document_class: Type, **kwargs) -> None:
+        """Create a table/collection for the document class."""
+        await self.execute_with_pool(self._create_table_op, document_class, **kwargs)
     
-    async def insert(self, table_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Insert a single document.
-        
-        Args:
-            table_name: The table name
-            data: The document data to insert
-            
-        Returns:
-            The inserted document with any generated fields
-        """
-        # Generate ID if not provided
+    async def _insert_op(self, conn: Any, table_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Operation to insert a single document."""
         if 'id' not in data or not data['id']:
-            # Get next ID from sequence
-            doc_id = await self._execute('incr', self._get_sequence_key(table_name))
+            doc_id = await self._execute(conn, 'incr', self._get_sequence_key(table_name))
             data['id'] = str(doc_id)
         else:
             doc_id = data['id']
         
-        # Create document key
         doc_key = self._get_doc_key(table_name, str(doc_id))
-        
-        # Serialize and store document
         serialized = self._serialize_document(data)
-        await self._execute('hset', doc_key, mapping=serialized)
         
-        # Update indexes
-        pipe = await self._pipeline()
+        pipe = self._pipeline(conn)
+        pipe.hset(doc_key, mapping=serialized)
         for field, value in data.items():
             if value is not None:
                 index_key = self._get_index_key(table_name, field)
-                # For numeric values, use them as scores in sorted sets
-                if isinstance(value, (int, float)):
-                    pipe.zadd(index_key, {doc_key: float(value)})
-                else:
-                    # For non-numeric, use lexicographical sorting
-                    pipe.zadd(index_key, {doc_key: 0})
+                score = float(value) if isinstance(value, (int, float)) else 0
+                pipe.zadd(index_key, {doc_key: score})
         
         await self._execute_pipeline(pipe)
-        
         return data
-    
-    async def insert_many(self, table_name: str, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Insert multiple documents.
-        
-        Args:
-            table_name: The table name
-            data: List of documents to insert
-            
-        Returns:
-            List of inserted documents
-        """
+
+    async def insert(self, table_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Insert a single document."""
+        return await self.execute_with_pool(self._insert_op, table_name, data)
+
+    async def _insert_many_op(self, conn: Any, table_name: str, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Operation to insert multiple documents."""
         results = []
-        pipe = await self._pipeline()
         
+        # Generate IDs for docs that need them. This requires separate calls.
         for doc in data:
-            # Generate ID if needed
             if 'id' not in doc or not doc['id']:
-                doc_id = await self._execute('incr', self._get_sequence_key(table_name))
+                doc_id = await self._execute(conn, 'incr', self._get_sequence_key(table_name))
                 doc['id'] = str(doc_id)
-            else:
-                doc_id = doc['id']
-            
-            # Add to pipeline
-            doc_key = self._get_doc_key(table_name, str(doc_id))
+
+        # Pipeline the rest of the operations
+        pipe = self._pipeline(conn)
+        for doc in data:
+            doc_key = self._get_doc_key(table_name, str(doc['id']))
             serialized = self._serialize_document(doc)
             pipe.hset(doc_key, mapping=serialized)
             
-            # Update indexes in pipeline
             for field, value in doc.items():
                 if value is not None:
                     index_key = self._get_index_key(table_name, field)
-                    if isinstance(value, (int, float)):
-                        pipe.zadd(index_key, {doc_key: float(value)})
-                    else:
-                        pipe.zadd(index_key, {doc_key: 0})
-            
+                    score = float(value) if isinstance(value, (int, float)) else 0
+                    pipe.zadd(index_key, {doc_key: score})
             results.append(doc)
-        
+
         await self._execute_pipeline(pipe)
         return results
+
+    async def insert_many(self, table_name: str, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Insert multiple documents."""
+        return await self.execute_with_pool(self._insert_many_op, table_name, data)
     
-    async def select(self, table_name: str, conditions: List[str], 
-                    fields: Optional[List[str]] = None,
-                    limit: Optional[int] = None, 
-                    offset: Optional[int] = None,
-                    order_by: Optional[List[tuple[str, str]]] = None) -> List[Dict[str, Any]]:
-        """Select documents from a table.
-        
-        Args:
-            table_name: The table name
-            conditions: List of condition strings
-            fields: List of fields to return (None for all)
-            limit: Maximum number of results
-            offset: Number of results to skip
-            order_by: List of (field, direction) tuples
-            
-        Returns:
-            List of matching documents
-        """
-        # For now, implement a simple scan approach
-        # In production, this would use indexes more intelligently
-        
-        # Get all document keys for the table
+    async def _select_op(self, conn: Any, table_name: str, conditions: List[str], fields: Optional[List[str]], limit: Optional[int], offset: Optional[int], order_by: Optional[List[tuple[str, str]]]) -> List[Dict[str, Any]]:
+        """Operation to select documents from a table."""
         pattern = f"{self.doc_prefix}{table_name}:*"
         cursor = 0
         keys = []
-        
-        # Scan for all keys matching the pattern
         while True:
-            if self.is_async:
-                cursor, batch = await self.client.scan(cursor, match=pattern, count=1000)
-            else:
-                cursor, batch = self.client.scan(cursor, match=pattern, count=1000)
-            
+            cursor, batch = await conn.scan(cursor, match=pattern, count=1000)
             keys.extend(batch)
             if cursor == 0:
                 break
         
-        # Fetch all documents
         results = []
         if keys:
-            pipe = await self._pipeline()
+            pipe = self._pipeline(conn)
             for key in keys:
                 pipe.hgetall(key)
-            
             docs = await self._execute_pipeline(pipe)
-            
-            for i, doc_data in enumerate(docs):
+            for doc_data in docs:
                 if doc_data:
                     doc = self._deserialize_document(doc_data)
-                    
-                    # Apply conditions (basic implementation)
                     if self._match_conditions(doc, conditions):
                         results.append(doc)
         
-        # Apply ordering
         if order_by:
             for field, direction in reversed(order_by):
-                reverse = direction.upper() == 'DESC'
-                results.sort(key=lambda x: x.get(field, ''), reverse=reverse)
+                results.sort(key=lambda x: x.get(field, ''), reverse=(direction.upper() == 'DESC'))
         
-        # Apply offset and limit
         if offset:
             results = results[offset:]
         if limit:
             results = results[:limit]
         
-        # Apply field projection
         if fields:
-            results = [
-                {k: v for k, v in doc.items() if k in fields}
-                for doc in results
-            ]
+            results = [{k: v for k, v in doc.items() if k in fields} for doc in results]
         
         return results
+
+    async def select(self, table_name: str, conditions: List[str], fields: Optional[List[str]] = None, limit: Optional[int] = None, offset: Optional[int] = None, order_by: Optional[List[tuple[str, str]]] = None) -> List[Dict[str, Any]]:
+        """Select documents from a table."""
+        return await self.execute_with_pool(self._select_op, table_name, conditions, fields, limit, offset, order_by)
     
     def _match_conditions(self, doc: Dict[str, Any], conditions: List[str]) -> bool:
         """Check if a document matches the given conditions.
@@ -362,163 +278,108 @@ class RedisBackend(BaseBackend):
         
         return True
     
-    async def count(self, table_name: str, conditions: List[str]) -> int:
-        """Count documents matching conditions.
-        
-        Args:
-            table_name: The table name
-            conditions: List of condition strings
-            
-        Returns:
-            Number of matching documents
-        """
-        # Use select without limit to count
-        docs = await self.select(table_name, conditions)
+    async def _count_op(self, conn: Any, table_name: str, conditions: List[str]) -> int:
+        """Operation to count documents."""
+        # This is inefficient, but matches the original logic. A real implementation
+        # would use indexes or other Redis features.
+        docs = await self._select_op(conn, table_name, conditions, fields=None, limit=None, offset=None, order_by=None)
         return len(docs)
+
+    async def count(self, table_name: str, conditions: List[str]) -> int:
+        """Count documents matching conditions."""
+        return await self.execute_with_pool(self._count_op, table_name, conditions)
     
-    async def update(self, table_name: str, conditions: List[str], 
-                    data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Update documents matching conditions.
-        
-        Args:
-            table_name: The table name
-            conditions: List of condition strings
-            data: The fields to update
-            
-        Returns:
-            List of updated documents
-        """
-        # Find matching documents
-        docs = await self.select(table_name, conditions)
-        
+    async def _update_op(self, conn: Any, table_name: str, conditions: List[str], data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Operation to update documents."""
+        docs = await self._select_op(conn, table_name, conditions, fields=None, limit=None, offset=None, order_by=None)
         if not docs:
             return []
         
-        # Update each document
-        pipe = await self._pipeline()
+        pipe = self._pipeline(conn)
         updated = []
-        
         for doc in docs:
             doc_id = doc['id']
             doc_key = self._get_doc_key(table_name, str(doc_id))
-            
-            # Merge updates
             doc.update(data)
-            
-            # Update in Redis
             serialized = self._serialize_document(doc)
             pipe.hset(doc_key, mapping=serialized)
-            
-            # Update indexes for changed fields
             for field, value in data.items():
                 if value is not None:
                     index_key = self._get_index_key(table_name, field)
-                    if isinstance(value, (int, float)):
-                        pipe.zadd(index_key, {doc_key: float(value)})
-                    else:
-                        pipe.zadd(index_key, {doc_key: 0})
-            
+                    score = float(value) if isinstance(value, (int, float)) else 0
+                    pipe.zadd(index_key, {doc_key: score})
             updated.append(doc)
         
         await self._execute_pipeline(pipe)
         return updated
-    
-    async def delete(self, table_name: str, conditions: List[str]) -> int:
-        """Delete documents matching conditions.
-        
-        Args:
-            table_name: The table name
-            conditions: List of condition strings
-            
-        Returns:
-            Number of deleted documents
-        """
-        # Find matching documents
-        docs = await self.select(table_name, conditions)
-        
+
+    async def update(self, table_name: str, conditions: List[str], data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Update documents matching conditions."""
+        return await self.execute_with_pool(self._update_op, table_name, conditions, data)
+
+    async def _delete_op(self, conn: Any, table_name: str, conditions: List[str]) -> int:
+        """Operation to delete documents."""
+        docs = await self._select_op(conn, table_name, conditions, fields=None, limit=None, offset=None, order_by=None)
         if not docs:
             return 0
         
-        # Delete each document
-        pipe = await self._pipeline()
-        
+        pipe = self._pipeline(conn)
         for doc in docs:
-            doc_id = doc['id']
-            doc_key = self._get_doc_key(table_name, str(doc_id))
-            
-            # Delete document
+            doc_key = self._get_doc_key(table_name, str(doc['id']))
             pipe.delete(doc_key)
-            
-            # Remove from indexes
             for field in doc.keys():
                 index_key = self._get_index_key(table_name, field)
                 pipe.zrem(index_key, doc_key)
         
         await self._execute_pipeline(pipe)
         return len(docs)
+
+    async def delete(self, table_name: str, conditions: List[str]) -> int:
+        """Delete documents matching conditions."""
+        return await self.execute_with_pool(self._delete_op, table_name, conditions)
     
+    async def _drop_table_op(self, conn: Any, table_name: str, if_exists: bool = True) -> None:
+        """Operation to drop a table."""
+        # Note: if_exists is not easily handled here without an extra EXISTS call.
+        patterns = [
+            f"{self.doc_prefix}{table_name}:*",
+            f"{self.index_prefix}{table_name}:*"
+        ]
+        for pattern in patterns:
+            await self._delete_keys_by_pattern(conn, pattern)
+        
+        table_key = self._get_table_key(table_name)
+        seq_key = self._get_sequence_key(table_name)
+        await self._execute(conn, 'delete', table_key, seq_key)
+
     async def drop_table(self, table_name: str, if_exists: bool = True) -> None:
-        """Drop a table/collection.
-        
-        Args:
-            table_name: The table name to drop
-            if_exists: Whether to ignore if table doesn't exist
-        """
-        # Delete all documents
-        pattern = f"{self.doc_prefix}{table_name}:*"
-        await self._delete_keys_by_pattern(pattern)
-        
-        # Delete all indexes
-        pattern = f"{self.index_prefix}{table_name}:*"
-        await self._delete_keys_by_pattern(pattern)
-        
-        # Delete table metadata
-        await self._execute('delete', self._get_table_key(table_name))
-        
-        # Delete sequence
-        await self._execute('delete', self._get_sequence_key(table_name))
-    
-    async def _delete_keys_by_pattern(self, pattern: str) -> None:
-        """Delete all keys matching a pattern."""
+        """Drop a table/collection."""
+        await self.execute_with_pool(self._drop_table_op, table_name, if_exists=if_exists)
+
+    async def _delete_keys_by_pattern(self, conn: Any, pattern: str) -> None:
+        """Delete all keys matching a pattern using a provided connection."""
         cursor = 0
         while True:
-            if self.is_async:
-                cursor, keys = await self.client.scan(cursor, match=pattern, count=1000)
-            else:
-                cursor, keys = self.client.scan(cursor, match=pattern, count=1000)
-            
+            cursor, keys = await conn.scan(cursor, match=pattern, count=1000)
             if keys:
-                await self._execute('delete', *keys)
-            
+                await self._execute(conn, 'delete', *keys)
             if cursor == 0:
                 break
-    
-    async def execute_raw(self, query: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        """Execute a raw Redis command.
-        
-        Args:
-            query: The Redis command
-            params: Optional parameters
-            
-        Returns:
-            Command result
-        """
-        # Parse the command
+
+    async def _execute_raw_op(self, conn: Any, query: str, params: Optional[Dict[str, Any]]) -> Any:
+        """Operation to execute a raw Redis command."""
         parts = query.split()
         if not parts:
             return None
-        
         command = parts[0].lower()
         args = parts[1:]
-        
-        # Substitute parameters if provided
         if params:
-            args = [
-                params.get(arg[1:], arg) if arg.startswith('$') else arg
-                for arg in args
-            ]
-        
-        return await self._execute(command, *args)
+            args = [params.get(arg[1:], arg) if arg.startswith('$') else arg for arg in args]
+        return await self._execute(conn, command, *args)
+
+    async def execute_raw(self, query: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """Execute a raw Redis command."""
+        return await self.execute_with_pool(self._execute_raw_op, query, params=params)
     
     def build_condition(self, field: str, operator: str, value: Any) -> str:
         """Build a condition string for Redis queries.

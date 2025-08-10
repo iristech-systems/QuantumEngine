@@ -7,7 +7,7 @@ and analysis through a series of stages.
 import re
 from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from .connection import ConnectionRegistry
+from .connection_api import ConnectionRegistry
 
 if TYPE_CHECKING:
     from .query import QuerySet

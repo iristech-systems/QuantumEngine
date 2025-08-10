@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, cast
-from ..connection import ConnectionRegistry
+from ..connection_api import ConnectionRegistry
 from .base import QuerySet
 from ..pagination import PaginationResult
 

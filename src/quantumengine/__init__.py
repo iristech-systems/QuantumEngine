@@ -2,13 +2,14 @@
 QuantumEngine: Multi-backend Object-Document Mapper with both sync and async support
 """
 
-from .connection import (
-    SurrealEngineAsyncConnection, 
-    SurrealEngineSyncConnection, 
+from .connection_api import (
+    SurrealEngineAsyncConnection,
+    SurrealEngineSyncConnection,
     ConnectionRegistry,
     create_connection,
     BaseSurrealEngineConnection
 )
+from .connection import PoolConfig
 
 # For backward compatibility
 SurrealEngineConnection = SurrealEngineAsyncConnection

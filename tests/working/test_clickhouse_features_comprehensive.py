@@ -25,24 +25,22 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 try:
-    from src.quantumengine.connection import create_connection
-    from src.quantumengine.backends.clickhouse import ClickHouseBackend
-    from src.quantumengine.document import Document
-    from src.quantumengine.fields import (
+    from quantumengine import create_connection, Document
+    from quantumengine.backends.base import BaseBackend
+    from quantumengine.fields import (
         StringField, DecimalField, DateTimeField, BooleanField, IntField
     )
-    from src.quantumengine.fields.clickhouse import (
+    from quantumengine.fields.clickhouse import (
         LowCardinalityField, FixedStringField, EnumField, ArrayField,
         CompressedStringField, CompressedLowCardinalityField
     )
-    from src.quantumengine.materialized_document import (
+    from quantumengine.materialized_document import (
         MaterializedDocument, MaterializedField, 
         Count, Sum, Avg, Max, Min, CountDistinct, ToDate
     )
-    from src.quantumengine.clickhouse_functions import (
+    from quantumengine.clickhouse_functions import (
         has, hasAll, hasAny, toDate, toYYYYMM, length, lower, upper, round_
     )
-    from src.quantumengine.connection import ConnectionRegistry
     print("✅ Successfully imported QuantumORM components")
 except ImportError as e:
     print(f"❌ Failed to import QuantumORM components: {e}")
@@ -142,25 +140,20 @@ class DailyMarketplaceSummary(MaterializedDocument):
     max_price = MaterializedField(aggregate=Max('offer_price'))
 
 
-async def setup_test_environment():
+async def setup_test_environment() -> Optional[BaseBackend]:
     """Set up ClickHouse connection and clean environment."""
     print("\n🔧 Setting Up Test Environment...")
     
     try:
         # Use test ClickHouse connection
-        connection = create_connection(
-            url="http://localhost:8123",
+        backend = create_connection(
+            backend='clickhouse',
+            host="localhost",
+            port=8123,
             database="quantum_test",
             username="default",
             password="",
-            make_default=True,
-            async_mode=True,
         )
-        await connection.connect()
-        
-        backend = ClickHouseBackend(connection)
-        ConnectionRegistry.register('clickhouse_comprehensive', connection, 'clickhouse')
-        ConnectionRegistry.set_default('clickhouse', 'clickhouse_comprehensive')
         
         print("✅ Connected to ClickHouse")
         
@@ -172,7 +165,7 @@ async def setup_test_environment():
         
         for query in cleanup_queries:
             try:
-                await backend._execute(query)
+                await backend.execute_raw(query)
             except Exception:
                 pass
         
@@ -186,7 +179,7 @@ async def setup_test_environment():
         return None
 
 
-async def test_clickhouse_field_types(backend):
+async def test_clickhouse_field_types(backend: BaseBackend):
     """Test all ClickHouse field types."""
     print("\n🔍 Testing ClickHouse Field Types...")
     
@@ -196,7 +189,7 @@ async def test_clickhouse_field_types(backend):
         print("✅ Created table with all ClickHouse field types")
         
         # Verify table structure
-        table_info = await backend._query("DESCRIBE marketplace_data_comprehensive")
+        table_info = await backend.execute_raw("DESCRIBE marketplace_data_comprehensive")
         field_types = {row['name']: row['type'] for row in table_info}
         
         # Verify ClickHouse-specific types
@@ -229,7 +222,7 @@ async def test_clickhouse_field_types(backend):
         return False
 
 
-async def test_data_insertion_and_types(backend):
+async def test_data_insertion_and_types(backend: BaseBackend):
     """Test data insertion with all ClickHouse field types."""
     print("\n📝 Testing Data Insertion with ClickHouse Types...")
     
@@ -316,7 +309,7 @@ async def test_data_insertion_and_types(backend):
         return False
 
 
-async def test_materialized_view_clickhouse(backend):
+async def test_materialized_view_clickhouse(backend: BaseBackend):
     """Test MaterializedDocument with ClickHouse optimizations."""
     print("\n🏗️ Testing MaterializedDocument with ClickHouse...")
     
@@ -329,7 +322,7 @@ async def test_materialized_view_clickhouse(backend):
         await asyncio.sleep(2)
         
         # Query materialized view
-        results = await backend._query("SELECT * FROM daily_marketplace_summary_comprehensive")
+        results = await backend.execute_raw("SELECT * FROM daily_marketplace_summary_comprehensive")
         print(f"✅ Materialized view contains {len(results)} aggregated records")
         
         if results:
@@ -343,7 +336,7 @@ async def test_materialized_view_clickhouse(backend):
         
         # Test materialized view performance
         explain_query = "EXPLAIN SELECT * FROM daily_marketplace_summary_comprehensive WHERE marketplace = 'Amazon'"
-        explain_result = await backend._query(explain_query)
+        explain_result = await backend.execute_raw(explain_query)
         print("✅ Materialized view query execution plan verified")
         
         return True
@@ -355,13 +348,13 @@ async def test_materialized_view_clickhouse(backend):
         return False
 
 
-async def test_clickhouse_optimizations(backend):
+async def test_clickhouse_optimizations(backend: BaseBackend):
     """Test ClickHouse-specific optimizations."""
     print("\n⚡ Testing ClickHouse Optimizations...")
     
     try:
         # Test table engine and partitioning
-        table_info = await backend._query("SHOW CREATE TABLE marketplace_data_comprehensive")
+        table_info = await backend.execute_raw("SHOW CREATE TABLE marketplace_data_comprehensive")
         create_statement = table_info[0]['statement']
         
         optimization_checks = [
@@ -378,7 +371,7 @@ async def test_clickhouse_optimizations(backend):
                 print(f"⚠️ {description}: {check} not found")
         
         # Test compression and encoding
-        compression_info = await backend._query(
+        compression_info = await backend.execute_raw(
             "SELECT name, type, compression_codec FROM system.columns "
             "WHERE table = 'marketplace_data_comprehensive' AND database = 'quantum_test'"
         )
@@ -387,7 +380,7 @@ async def test_clickhouse_optimizations(backend):
         print(f"✅ Found {len(compressed_fields)} fields with compression")
         
         # Test index usage
-        index_info = await backend._query(
+        index_info = await backend.execute_raw(
             "SELECT name, type, granularity FROM system.data_skipping_indices "
             "WHERE table = 'marketplace_data_comprehensive' AND database = 'quantum_test'"
         )
@@ -405,7 +398,7 @@ async def test_clickhouse_optimizations(backend):
         return False
 
 
-async def test_clickhouse_functions_integration(backend):
+async def test_clickhouse_functions_integration(backend: BaseBackend):
     """Test ClickHouse functions in real queries."""
     print("\n🔧 Testing ClickHouse Functions Integration...")
     
@@ -436,7 +429,7 @@ async def test_clickhouse_functions_integration(backend):
         
         for test in function_tests:
             try:
-                results = await backend._query(test['query'])
+                results = await backend.execute_raw(test['query'])
                 print(f"✅ {test['description']}: {len(results)} results")
             except Exception as e:
                 print(f"❌ {test['description']}: {e}")
@@ -451,7 +444,7 @@ async def test_clickhouse_functions_integration(backend):
         return False
 
 
-async def test_performance_monitoring(backend):
+async def test_performance_monitoring(backend: BaseBackend):
     """Test performance monitoring and query optimization."""
     print("\n📊 Testing Performance Monitoring...")
     
@@ -466,11 +459,11 @@ async def test_performance_monitoring(backend):
         for query in performance_queries:
             # Run EXPLAIN
             explain_query = f"EXPLAIN {query}"
-            explain_result = await backend._query(explain_query)
+            explain_result = await backend.execute_raw(explain_query)
             
             # Run actual query and measure
             start_time = asyncio.get_event_loop().time()
-            results = await backend._query(query)
+            results = await backend.execute_raw(query)
             end_time = asyncio.get_event_loop().time()
             
             execution_time = (end_time - start_time) * 1000  # Convert to ms
@@ -484,7 +477,7 @@ async def test_performance_monitoring(backend):
         ]
         
         for query, description in system_queries:
-            result = await backend._query(query)
+            result = await backend.execute_raw(query)
             value = list(result[0].values())[0] if result else 0
             print(f"✅ {description}: {value}")
         
@@ -497,7 +490,7 @@ async def test_performance_monitoring(backend):
         return False
 
 
-async def cleanup_test_environment(backend):
+async def cleanup_test_environment(backend: BaseBackend):
     """Clean up test data and views."""
     print("\n🧹 Cleaning Up Test Environment...")
     
@@ -507,7 +500,7 @@ async def cleanup_test_environment(backend):
         print("✅ Dropped materialized view")
         
         # Drop base table
-        await backend._execute("DROP TABLE IF EXISTS marketplace_data_comprehensive")
+        await backend.execute_raw("DROP TABLE IF EXISTS marketplace_data_comprehensive")
         print("✅ Dropped base table")
         
         return True

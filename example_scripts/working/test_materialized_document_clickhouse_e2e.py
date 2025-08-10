@@ -21,19 +21,18 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 try:
-    from src.quantumengine.backends.clickhouse import ClickHouseBackend
-    from src.quantumengine.document import Document
-    from src.quantumengine.fields import (
+    from quantumengine import Document, create_connection
+    from quantumengine.backends.base import BaseBackend
+    from quantumengine.fields import (
         StringField, DecimalField, DateTimeField, BooleanField, 
         IntField, FloatField
     )
-    from src.quantumengine.fields.clickhouse import LowCardinalityField
-    from src.quantumengine.materialized_document import (
+    from quantumengine.fields.clickhouse import LowCardinalityField
+    from quantumengine.materialized_document import (
         MaterializedDocument, MaterializedField, 
         Count, Sum, Avg, Max, Min, CountDistinct,
         ToDate, ToYearMonth
     )
-    from src.quantumengine.connection import ConnectionRegistry
     print("✅ Successfully imported QuantumORM components")
 except ImportError as e:
     print(f"❌ Failed to import QuantumORM components: {e}")
@@ -120,18 +119,13 @@ class ProductSummary(MaterializedDocument):
     buybox_wins = MaterializedField(aggregate=Sum('is_buybox_winner'))
 
 
-async def setup_test_environment():
+async def setup_test_environment() -> Optional[BaseBackend]:
     """Set up ClickHouse connection and clean environment."""
     print("\n🔧 Setting Up Test Environment...")
     
     try:
-        # Create ClickHouse client and backend
-        client = clickhouse_connect.get_client(**CLICKHOUSE_CONFIG)
-        backend = ClickHouseBackend(client)
-        
-        # Register the backend connection
-        ConnectionRegistry.register('clickhouse_e2e', client, 'clickhouse')
-        ConnectionRegistry.set_default('clickhouse', 'clickhouse_e2e')
+        # Create ClickHouse backend
+        backend = create_connection(backend='clickhouse', **CLICKHOUSE_CONFIG)
         
         print("✅ Connected to ClickHouse")
         
@@ -144,7 +138,7 @@ async def setup_test_environment():
         
         for query in cleanup_queries:
             try:
-                await backend._execute(query)
+                await backend.execute_raw(query)
             except Exception:
                 pass  # Ignore errors for non-existent tables
         
@@ -157,7 +151,7 @@ async def setup_test_environment():
         return None
 
 
-async def test_base_table_creation(backend):
+async def test_base_table_creation(backend: BaseBackend):
     """Create the base sales data table."""
     print("\n📊 Creating Base Table...")
     
@@ -166,7 +160,7 @@ async def test_base_table_creation(backend):
         print("✅ Created sales_data_e2e table")
         
         # Verify table structure
-        result = await backend._query("DESCRIBE sales_data_e2e")
+        result = await backend.execute_raw("DESCRIBE sales_data_e2e")
         if result:
             print(f"✅ Table has {len(result)} columns")
             return True

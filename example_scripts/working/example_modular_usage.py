@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from src.quantumengine.backends import BackendRegistry
 from src.quantumengine.document import Document
 from src.quantumengine.fields import StringField, IntField, DateTimeField
-from src.quantumengine.connection import create_connection
+from quantumengine import create_connection
 import datetime
 
 
